@@ -14,6 +14,8 @@ tags:
     description: Project management
   - name: entries
     description: Journal entry management
+  - name: tags
+    description: Tag management
   - name: ai
     description: AI analysis features
 paths:
@@ -99,6 +101,44 @@ paths:
       responses:
         "204":
           description: Deleted
+
+  /tags:
+    get:
+      operationId: listTags
+      tags: [tags]
+      summary: List all tags, optionally filtered by search query
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tag"
+    post:
+      operationId: createTag
+      tags: [tags]
+      summary: Create a new tag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTagBody"
+      responses:
+        "201":
+          description: Created tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
 
   /entries:
     get:
@@ -286,6 +326,32 @@ components:
       required:
         - detail
 
+    Tag:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        color:
+          type: string
+          description: Hex color code e.g. "#ef4444"
+      required:
+        - id
+        - name
+        - color
+
+    CreateTagBody:
+      type: object
+      properties:
+        name:
+          type: string
+        color:
+          type: string
+          description: Optional hex color. Auto-assigned if omitted.
+      required:
+        - name
+
     Project:
       type: object
       properties:
@@ -350,7 +416,7 @@ components:
         tags:
           type: array
           items:
-            type: string
+            $ref: "#/components/schemas/Tag"
         createdAt:
           type: string
           format: date-time
@@ -382,6 +448,7 @@ components:
           nullable: true
         tags:
           type: array
+          description: Tag names. New tags are auto-created.
           items:
             type: string
       required:
@@ -400,6 +467,7 @@ components:
           nullable: true
         tags:
           type: array
+          description: Tag names. New tags are auto-created.
           items:
             type: string
 

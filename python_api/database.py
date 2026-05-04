@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import json
 from contextlib import contextmanager
 
 DB_PATH = os.environ.get("DB_PATH", "journal.db")
@@ -24,6 +25,45 @@ def get_db():
         raise
     finally:
         conn.close()
+
+
+TAG_COLORS = [
+    "#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4",
+    "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f59e0b",
+    "#10b981", "#6366f1",
+]
+
+
+def _migrate_tags_from_json(conn):
+    entries = conn.execute(
+        "SELECT id, tags FROM entries WHERE tags IS NOT NULL AND tags != '[]' "
+        "AND id NOT IN (SELECT DISTINCT log_id FROM log_tags)"
+    ).fetchall()
+    for entry in entries:
+        try:
+            tag_names = json.loads(entry["tags"])
+        except Exception:
+            continue
+        for name in tag_names:
+            name = name.strip()
+            if not name:
+                continue
+            existing = conn.execute(
+                "SELECT id FROM tags WHERE name = ?", (name,)
+            ).fetchone()
+            if existing:
+                tag_id = existing["id"]
+            else:
+                count = conn.execute("SELECT COUNT(*) as c FROM tags").fetchone()["c"]
+                color = TAG_COLORS[count % len(TAG_COLORS)]
+                cur = conn.execute(
+                    "INSERT INTO tags (name, color) VALUES (?, ?)", (name, color)
+                )
+                tag_id = cur.lastrowid
+            conn.execute(
+                "INSERT OR IGNORE INTO log_tags (log_id, tag_id) VALUES (?, ?)",
+                (entry["id"], tag_id),
+            )
 
 
 def init_db():
@@ -57,6 +97,22 @@ def init_db():
                 value TEXT NOT NULL,
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                color TEXT NOT NULL DEFAULT '#6366f1'
+            );
+
+            CREATE TABLE IF NOT EXISTS log_tags (
+                log_id INTEGER NOT NULL,
+                tag_id INTEGER NOT NULL,
+                PRIMARY KEY (log_id, tag_id),
+                FOREIGN KEY (log_id) REFERENCES entries(id) ON DELETE CASCADE,
+                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_log_tags_log_id ON log_tags(log_id);
         """)
 
         row = conn.execute("SELECT COUNT(*) as c FROM projects").fetchone()
@@ -91,3 +147,4 @@ def init_db():
                     '["閱讀", "專注力", "生產力"]',
                 ),
             )
+        _migrate_tags_from_json(conn)

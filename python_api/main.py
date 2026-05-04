@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .database import init_db
-from .routers import projects, entries, ai, settings
+from .routers import projects, entries, ai, settings, tags
 
 app = FastAPI(title="AI 智囊日誌 API", version="1.0.0")
 
@@ -29,3 +29,4 @@ app.include_router(projects.router, prefix="/api")
 app.include_router(entries.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
+app.include_router(tags.router, prefix="/api")

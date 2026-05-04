@@ -13,6 +13,19 @@ export interface ErrorResponse {
   detail: string;
 }
 
+export interface Tag {
+  id: number;
+  name: string;
+  /** Hex color code e.g. "#ef4444" */
+  color: string;
+}
+
+export interface CreateTagBody {
+  name: string;
+  /** Optional hex color. Auto-assigned if omitted. */
+  color?: string;
+}
+
 export type ProjectCategory =
   (typeof ProjectCategory)[keyof typeof ProjectCategory];
 
@@ -63,7 +76,7 @@ export interface Entry {
   template: EntryTemplate;
   /** 1-5 scale */
   mood?: number | null;
-  tags: string[];
+  tags: Tag[];
   createdAt: string;
 }
 
@@ -82,12 +95,14 @@ export interface CreateEntryBody {
   projectId: number;
   template: CreateEntryBodyTemplate;
   mood?: number | null;
+  /** Tag names. New tags are auto-created. */
   tags?: string[];
 }
 
 export interface UpdateEntryBody {
   content?: string;
   mood?: number | null;
+  /** Tag names. New tags are auto-created. */
   tags?: string[];
 }
 
@@ -155,6 +170,10 @@ export interface GoalDecomposition {
   steps: GoalDecompositionStepsItem[];
   totalEstimatedTime: string;
 }
+
+export type ListTagsParams = {
+  search?: string;
+};
 
 export type ListEntriesParams = {
   projectId?: number;

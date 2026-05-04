@@ -6,6 +6,26 @@ from ..database import get_db
 
 router = APIRouter(prefix="/entries", tags=["entries"])
 
+TAG_COLORS = [
+    "#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4",
+    "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f59e0b",
+    "#10b981", "#6366f1",
+]
+
+_ENTRY_SELECT = """
+    SELECT e.*, p.name as project_name,
+        GROUP_CONCAT(
+            CAST(t.id AS TEXT) || ';;;' || t.name || ';;;' || t.color,
+            '|||'
+        ) as tag_data
+    FROM entries e
+    JOIN projects p ON p.id = e.project_id
+    LEFT JOIN log_tags lt ON lt.log_id = e.id
+    LEFT JOIN tags t ON t.id = lt.tag_id
+"""
+
+_ENTRY_GROUP = "GROUP BY e.id"
+
 
 class EntryCreate(BaseModel):
     date: str
@@ -22,19 +42,70 @@ class EntryUpdate(BaseModel):
     tags: Optional[list[str]] = None
 
 
+def _parse_tag_data(tag_data: str | None) -> list[dict]:
+    if not tag_data:
+        return []
+    tags = []
+    for record in tag_data.split("|||"):
+        parts = record.split(";;;")
+        if len(parts) == 3 and parts[0].isdigit():
+            tags.append({"id": int(parts[0]), "name": parts[1], "color": parts[2]})
+    return tags
+
+
 def row_to_entry(row) -> dict:
-    tags = json.loads(row["tags"]) if row["tags"] else []
+    keys = row.keys()
+    if "tag_data" in keys:
+        tags = _parse_tag_data(row["tag_data"])
+    else:
+        tags = []
+        try:
+            for name in json.loads(row["tags"] or "[]"):
+                tags.append({"id": 0, "name": name, "color": "#6366f1"})
+        except Exception:
+            pass
+
     return {
         "id": row["id"],
         "date": row["date"],
         "content": row["content"],
         "projectId": row["project_id"],
-        "projectName": row["project_name"] if "project_name" in row.keys() else "",
+        "projectName": row["project_name"] if "project_name" in keys else "",
         "template": row["template"],
         "mood": row["mood"],
         "tags": tags,
         "createdAt": row["created_at"],
     }
+
+
+def _sync_tags(conn, entry_id: int, tag_names: list[str]):
+    conn.execute("DELETE FROM log_tags WHERE log_id = ?", (entry_id,))
+    resolved_names = []
+    for raw in tag_names:
+        name = raw.strip()
+        if not name:
+            continue
+        resolved_names.append(name)
+        existing = conn.execute(
+            "SELECT id FROM tags WHERE name = ?", (name,)
+        ).fetchone()
+        if existing:
+            tag_id = existing["id"]
+        else:
+            count = conn.execute("SELECT COUNT(*) as c FROM tags").fetchone()["c"]
+            color = TAG_COLORS[count % len(TAG_COLORS)]
+            cur = conn.execute(
+                "INSERT INTO tags (name, color) VALUES (?, ?)", (name, color)
+            )
+            tag_id = cur.lastrowid
+        conn.execute(
+            "INSERT OR IGNORE INTO log_tags (log_id, tag_id) VALUES (?, ?)",
+            (entry_id, tag_id),
+        )
+    conn.execute(
+        "UPDATE entries SET tags = ? WHERE id = ?",
+        (json.dumps(resolved_names, ensure_ascii=False), entry_id),
+    )
 
 
 @router.get("")
@@ -46,25 +117,14 @@ def list_entries(
     with get_db() as conn:
         if projectId:
             rows = conn.execute(
-                """
-                SELECT e.*, p.name as project_name
-                FROM entries e
-                JOIN projects p ON p.id = e.project_id
-                WHERE e.project_id = ?
-                ORDER BY e.date DESC, e.created_at DESC
-                LIMIT ? OFFSET ?
-                """,
+                f"{_ENTRY_SELECT} WHERE e.project_id = ? {_ENTRY_GROUP} "
+                f"ORDER BY e.date DESC, e.created_at DESC LIMIT ? OFFSET ?",
                 (projectId, limit, offset),
             ).fetchall()
         else:
             rows = conn.execute(
-                """
-                SELECT e.*, p.name as project_name
-                FROM entries e
-                JOIN projects p ON p.id = e.project_id
-                ORDER BY e.date DESC, e.created_at DESC
-                LIMIT ? OFFSET ?
-                """,
+                f"{_ENTRY_SELECT} {_ENTRY_GROUP} "
+                f"ORDER BY e.date DESC, e.created_at DESC LIMIT ? OFFSET ?",
                 (limit, offset),
             ).fetchall()
         return [row_to_entry(r) for r in rows]
@@ -87,17 +147,15 @@ def create_entry(body: EntryCreate):
                 body.projectId,
                 body.template,
                 body.mood,
-                json.dumps(body.tags, ensure_ascii=False),
+                json.dumps([], ensure_ascii=False),
             ),
         )
+        entry_id = cur.lastrowid
+        _sync_tags(conn, entry_id, body.tags)
+
         row = conn.execute(
-            """
-            SELECT e.*, p.name as project_name
-            FROM entries e
-            JOIN projects p ON p.id = e.project_id
-            WHERE e.id = ?
-            """,
-            (cur.lastrowid,),
+            f"{_ENTRY_SELECT} WHERE e.id = ? {_ENTRY_GROUP}",
+            (entry_id,),
         ).fetchone()
         return row_to_entry(row)
 
@@ -118,23 +176,13 @@ def get_entries_summary(projectId: Optional[int] = Query(None)):
 
         if projectId:
             recent_rows = conn.execute(
-                """
-                SELECT e.*, p.name as project_name
-                FROM entries e
-                JOIN projects p ON p.id = e.project_id
-                WHERE e.project_id = ?
-                ORDER BY e.date DESC LIMIT 5
-                """,
+                f"{_ENTRY_SELECT} WHERE e.project_id = ? {_ENTRY_GROUP} "
+                f"ORDER BY e.date DESC LIMIT 5",
                 (projectId,),
             ).fetchall()
         else:
             recent_rows = conn.execute(
-                """
-                SELECT e.*, p.name as project_name
-                FROM entries e
-                JOIN projects p ON p.id = e.project_id
-                ORDER BY e.date DESC LIMIT 5
-                """
+                f"{_ENTRY_SELECT} {_ENTRY_GROUP} ORDER BY e.date DESC LIMIT 5"
             ).fetchall()
 
         by_project = conn.execute(
@@ -181,12 +229,7 @@ def get_entries_summary(projectId: Optional[int] = Query(None)):
 def get_entry(entry_id: int):
     with get_db() as conn:
         row = conn.execute(
-            """
-            SELECT e.*, p.name as project_name
-            FROM entries e
-            JOIN projects p ON p.id = e.project_id
-            WHERE e.id = ?
-            """,
+            f"{_ENTRY_SELECT} WHERE e.id = ? {_ENTRY_GROUP}",
             (entry_id,),
         ).fetchone()
         if not row:
@@ -197,10 +240,10 @@ def get_entry(entry_id: int):
 @router.put("/{entry_id}")
 def update_entry(entry_id: int, body: EntryUpdate):
     with get_db() as conn:
-        row = conn.execute(
+        existing = conn.execute(
             "SELECT id FROM entries WHERE id = ?", (entry_id,)
         ).fetchone()
-        if not row:
+        if not existing:
             raise HTTPException(status_code=404, detail="Entry not found")
 
         updates = []
@@ -211,9 +254,6 @@ def update_entry(entry_id: int, body: EntryUpdate):
         if body.mood is not None:
             updates.append("mood = ?")
             params.append(body.mood)
-        if body.tags is not None:
-            updates.append("tags = ?")
-            params.append(json.dumps(body.tags, ensure_ascii=False))
 
         if updates:
             params.append(entry_id)
@@ -221,13 +261,11 @@ def update_entry(entry_id: int, body: EntryUpdate):
                 f"UPDATE entries SET {', '.join(updates)} WHERE id = ?", params
             )
 
+        if body.tags is not None:
+            _sync_tags(conn, entry_id, body.tags)
+
         row = conn.execute(
-            """
-            SELECT e.*, p.name as project_name
-            FROM entries e
-            JOIN projects p ON p.id = e.project_id
-            WHERE e.id = ?
-            """,
+            f"{_ENTRY_SELECT} WHERE e.id = ? {_ENTRY_GROUP}",
             (entry_id,),
         ).fetchone()
         return row_to_entry(row)
