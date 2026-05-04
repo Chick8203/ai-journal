@@ -51,6 +51,12 @@ def init_db():
 
             CREATE INDEX IF NOT EXISTS idx_entries_project_id ON entries(project_id);
             CREATE INDEX IF NOT EXISTS idx_entries_date ON entries(date);
+
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
         """)
 
         row = conn.execute("SELECT COUNT(*) as c FROM projects").fetchone()

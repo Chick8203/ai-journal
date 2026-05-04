@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
 from ..database import get_db
-from ..gemini_client import generate_text
+from ..ai_client import generate_text
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 

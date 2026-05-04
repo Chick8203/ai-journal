@@ -8,6 +8,7 @@ import Dashboard from "@/pages/Dashboard";
 import Projects from "@/pages/Projects";
 import Journal from "@/pages/Journal";
 import AIAnalysis from "@/pages/AIAnalysis";
+import Settings from "@/pages/Settings";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,6 +27,7 @@ function Router() {
         <Route path="/journal" component={Journal} />
         <Route path="/projects" component={Projects} />
         <Route path="/ai" component={AIAnalysis} />
+        <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

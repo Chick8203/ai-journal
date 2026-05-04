@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Book, LayoutDashboard, FolderKanban, BrainCircuit } from "lucide-react";
+import { Book, LayoutDashboard, FolderKanban, BrainCircuit, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -10,6 +10,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { href: "/journal", label: "撰寫日誌", icon: Book },
     { href: "/projects", label: "專案", icon: FolderKanban },
     { href: "/ai", label: "AI 分析", icon: BrainCircuit },
+  ];
+
+  const bottomItems = [
+    { href: "/settings", label: "設定", icon: Settings },
   ];
 
   return (
@@ -38,6 +42,26 @@ export function Layout({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
+        <div className="py-4 px-4 border-t border-border space-y-1">
+          {bottomItems.map((item) => {
+            const isActive = location === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-md transition-colors text-sm font-medium",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                )}
+              >
+                <item.icon className="w-4 h-4" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
       </aside>
 
       {/* Mobile nav could go here */}
