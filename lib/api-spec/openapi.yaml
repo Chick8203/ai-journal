@@ -3,20 +3,25 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: AI 智囊日誌 API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: projects
+    description: Project management
+  - name: entries
+    description: Journal entry management
+  - name: ai
+    description: AI analysis features
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +29,245 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      summary: List all projects
+      responses:
+        "200":
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+    post:
+      operationId: createProject
+      tags: [projects]
+      summary: Create a new project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectBody"
+      responses:
+        "201":
+          description: Created project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+
+  /projects/{projectId}:
+    get:
+      operationId: getProject
+      tags: [projects]
+      summary: Get a project by ID
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteProject
+      tags: [projects]
+      summary: Delete a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /entries:
+    get:
+      operationId: listEntries
+      tags: [entries]
+      summary: List journal entries
+      parameters:
+        - name: projectId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Entry"
+    post:
+      operationId: createEntry
+      tags: [entries]
+      summary: Create a journal entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEntryBody"
+      responses:
+        "201":
+          description: Created entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entry"
+
+  /entries/{entryId}:
+    get:
+      operationId: getEntry
+      tags: [entries]
+      summary: Get a journal entry
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entry"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateEntry
+      tags: [entries]
+      summary: Update a journal entry
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEntryBody"
+      responses:
+        "200":
+          description: Updated entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entry"
+    delete:
+      operationId: deleteEntry
+      tags: [entries]
+      summary: Delete a journal entry
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /entries/stats/summary:
+    get:
+      operationId: getEntriesSummary
+      tags: [entries]
+      summary: Get summary stats for entries
+      parameters:
+        - name: projectId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Summary stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntriesSummary"
+
+  /ai/analyze-bottleneck:
+    post:
+      operationId: analyzeBottleneck
+      tags: [ai]
+      summary: Analyze work efficiency and detect bottlenecks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeBottleneckBody"
+      responses:
+        "200":
+          description: Analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisResult"
+
+  /ai/decompose-goal:
+    post:
+      operationId: decomposeGoal
+      tags: [ai]
+      summary: Decompose a big goal into actionable SOP steps
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecomposeGoalBody"
+      responses:
+        "200":
+          description: Decomposed steps
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GoalDecomposition"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +278,257 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+      required:
+        - detail
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        category:
+          type: string
+          enum: [engineering, office, general]
+        createdAt:
+          type: string
+          format: date-time
+        entryCount:
+          type: integer
+      required:
+        - id
+        - name
+        - category
+        - createdAt
+        - entryCount
+
+    CreateProjectBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        category:
+          type: string
+          enum: [engineering, office, general]
+      required:
+        - name
+        - category
+
+    Entry:
+      type: object
+      properties:
+        id:
+          type: integer
+        date:
+          type: string
+          format: date
+        content:
+          type: string
+        projectId:
+          type: integer
+        projectName:
+          type: string
+        template:
+          type: string
+          enum: [engineering, office, freeform]
+        mood:
+          type: integer
+          nullable: true
+          description: 1-5 scale
+        tags:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - date
+        - content
+        - projectId
+        - projectName
+        - template
+        - tags
+        - createdAt
+
+    CreateEntryBody:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        content:
+          type: string
+        projectId:
+          type: integer
+        template:
+          type: string
+          enum: [engineering, office, freeform]
+        mood:
+          type: integer
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+      required:
+        - date
+        - content
+        - projectId
+        - template
+
+    UpdateEntryBody:
+      type: object
+      properties:
+        content:
+          type: string
+        mood:
+          type: integer
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+
+    EntriesSummary:
+      type: object
+      properties:
+        totalEntries:
+          type: integer
+        totalProjects:
+          type: integer
+        recentEntries:
+          type: array
+          items:
+            $ref: "#/components/schemas/Entry"
+        entriesByProject:
+          type: array
+          items:
+            type: object
+            properties:
+              projectId:
+                type: integer
+              projectName:
+                type: string
+              count:
+                type: integer
+            required:
+              - projectId
+              - projectName
+              - count
+        streak:
+          type: integer
+          description: Consecutive days with entries
+      required:
+        - totalEntries
+        - totalProjects
+        - recentEntries
+        - entriesByProject
+        - streak
+
+    AnalyzeBottleneckBody:
+      type: object
+      properties:
+        projectId:
+          type: integer
+          nullable: true
+        days:
+          type: integer
+          default: 30
+          description: Number of past days to analyze
+      required: []
+
+    AnalysisResult:
+      type: object
+      properties:
+        efficiency:
+          type: object
+          properties:
+            trend:
+              type: string
+              enum: [improving, declining, stable]
+            firstDerivative:
+              type: number
+              description: Rate of change in output
+            secondDerivative:
+              type: number
+              description: Acceleration of change
+            score:
+              type: number
+          required:
+            - trend
+            - firstDerivative
+            - secondDerivative
+            - score
+        bottlenecks:
+          type: array
+          items:
+            type: string
+        suggestions:
+          type: array
+          items:
+            type: string
+        summary:
+          type: string
+      required:
+        - efficiency
+        - bottlenecks
+        - suggestions
+        - summary
+
+    DecomposeGoalBody:
+      type: object
+      properties:
+        goal:
+          type: string
+        context:
+          type: string
+          nullable: true
+      required:
+        - goal
+
+    GoalDecomposition:
+      type: object
+      properties:
+        goal:
+          type: string
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              stepNumber:
+                type: integer
+              title:
+                type: string
+              description:
+                type: string
+              estimatedTime:
+                type: string
+              deliverable:
+                type: string
+            required:
+              - stepNumber
+              - title
+              - description
+              - estimatedTime
+              - deliverable
+        totalEstimatedTime:
+          type: string
+      required:
+        - goal
+        - steps
+        - totalEstimatedTime

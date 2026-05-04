@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "AI 智囊日誌"
+version = "1.0.0"
+id = "artifacts/ai-journal"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25418
+
+[services.development]
+run = "pnpm --filter @workspace/ai-journal run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/ai-journal", "run", "build" ]
+publicDir = "artifacts/ai-journal/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25418"
+BASE_PATH = "/"
