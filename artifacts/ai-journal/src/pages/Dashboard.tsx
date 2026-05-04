@@ -37,10 +37,9 @@ export default function Dashboard() {
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <header>
-        <h1 className="text-3xl font-serif font-bold text-foreground mb-2">早安，今日的工作狀況如何？</h1>
+        <h1 className="text-3xl font-serif font-bold text-foreground mb-2">今日的工作狀況如何？</h1>
         <p className="text-muted-foreground">這是您的工作日誌總覽，隨時掌握進度與模式。</p>
       </header>
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="border-none shadow-sm bg-card hover-elevate transition-all">
           <CardHeader className="pb-2">
@@ -78,7 +77,6 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
