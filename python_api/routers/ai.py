@@ -99,6 +99,7 @@ def analyze_bottleneck(body: AnalyzeBottleneckBody):
   "summary": "整體分析摘要（2-3 句話）"
 }"""
 
+    avg_mood = f"{sum(moods) / len(moods):.1f}" if moods else "無資料"
     prompt = f"""以下是過去 {body.days} 天的工作日誌：
 
 {entries_text}
@@ -106,7 +107,7 @@ def analyze_bottleneck(body: AnalyzeBottleneckBody):
 心情評分統計：
 - 心情趨勢（一階微分）：{mood_trend:.2f}
 - 心情加速度（二階微分）：{mood_acceleration:.2f}
-- 平均心情：{sum(moods) / len(moods):.1f if moods else '無資料'}
+- 平均心情：{avg_mood}
 
 請根據以上資料進行深入分析，找出工作瓶頸並提供具體建議。"""
 

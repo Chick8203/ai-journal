@@ -5,6 +5,7 @@ Priority:
   2. Replit Gemini AI Integration (fallback, no key needed)
 """
 import os
+import requests
 from .database import get_db
 
 
@@ -38,23 +39,31 @@ def generate_text(prompt: str, system: str | None = None) -> str:
 
 
 def _call_replit_gemini(prompt: str) -> str:
-    from google import genai
-    from google.genai import types as genai_types
-
+    """Call Gemini via Replit AI Integration proxy using direct HTTP requests."""
     api_key = os.environ.get("AI_INTEGRATIONS_GEMINI_API_KEY", "dummy")
-    base_url = os.environ.get("AI_INTEGRATIONS_GEMINI_BASE_URL")
+    base_url = os.environ.get("AI_INTEGRATIONS_GEMINI_BASE_URL", "").rstrip("/")
 
-    http_options = None
-    if base_url:
-        http_options = genai_types.HttpOptions(base_url=base_url)
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {"maxOutputTokens": 8192},
+    }
 
-    client = genai.Client(api_key=api_key, http_options=http_options)
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[genai_types.Content(role="user", parts=[genai_types.Part(text=prompt)])],
-        config=genai_types.GenerateContentConfig(max_output_tokens=8192),
-    )
-    return response.text or ""
+    models = ["gemini-2.5-flash", "gemini-2.5-pro"]
+    last_exc: Exception = RuntimeError("No models available")
+
+    for model in models:
+        url = f"{base_url}/models/{model}:generateContent?key={api_key}"
+        try:
+            resp = requests.post(url, json=payload, timeout=60)
+            resp.raise_for_status()
+            data = resp.json()
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+            return text
+        except Exception as e:
+            last_exc = e
+            continue
+
+    raise last_exc
 
 
 def _call_gemini_with_key(prompt: str, api_key: str) -> str:
