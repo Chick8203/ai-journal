@@ -190,6 +190,7 @@ def get_entries_summary(projectId: Optional[int] = Query(None)):
             SELECT p.id as project_id, p.name as project_name, COUNT(e.id) as count
             FROM projects p
             LEFT JOIN entries e ON e.project_id = p.id
+            WHERE p.status = 'active'
             GROUP BY p.id
             ORDER BY count DESC
             """
