@@ -34,6 +34,17 @@ TAG_COLORS = [
 ]
 
 
+def _migrate_project_status(conn):
+    try:
+        conn.execute("ALTER TABLE projects ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE projects ADD COLUMN completed_at TEXT DEFAULT NULL")
+    except Exception:
+        pass
+
+
 def _migrate_tags_from_json(conn):
     entries = conn.execute(
         "SELECT id, tags FROM entries WHERE tags IS NOT NULL AND tags != '[]' "
@@ -147,4 +158,5 @@ def init_db():
                     '["閱讀", "專注力", "生產力"]',
                 ),
             )
+        _migrate_project_status(conn)
         _migrate_tags_from_json(conn)

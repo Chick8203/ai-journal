@@ -37,6 +37,14 @@ paths:
       operationId: listProjects
       tags: [projects]
       summary: List all projects
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, completed, archived, all]
+          description: Filter by status. Defaults to showing active and completed (not archived).
       responses:
         "200":
           description: List of projects
@@ -88,6 +96,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateProjectStatus
+      tags: [projects]
+      summary: Update project status (active/completed/archived)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectBody"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       operationId: deleteProject
       tags: [projects]
@@ -101,6 +138,33 @@ paths:
       responses:
         "204":
           description: Deleted
+
+  /projects/{projectId}/entries:
+    get:
+      operationId: getProjectEntries
+      tags: [projects]
+      summary: Get all journal entries for a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Entry"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /tags:
     get:
@@ -365,6 +429,13 @@ components:
         category:
           type: string
           enum: [engineering, office, general]
+        status:
+          type: string
+          enum: [active, completed, archived]
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -374,8 +445,18 @@ components:
         - id
         - name
         - category
+        - status
         - createdAt
         - entryCount
+
+    UpdateProjectBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [active, completed, archived]
+      required:
+        - status
 
     CreateProjectBody:
       type: object

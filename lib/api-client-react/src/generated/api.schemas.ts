@@ -35,13 +35,36 @@ export const ProjectCategory = {
   general: "general",
 } as const;
 
+export type ProjectStatus = (typeof ProjectStatus)[keyof typeof ProjectStatus];
+
+export const ProjectStatus = {
+  active: "active",
+  completed: "completed",
+  archived: "archived",
+} as const;
+
 export interface Project {
   id: number;
   name: string;
   description?: string | null;
   category: ProjectCategory;
+  status: ProjectStatus;
+  completedAt?: string | null;
   createdAt: string;
   entryCount: number;
+}
+
+export type UpdateProjectBodyStatus =
+  (typeof UpdateProjectBodyStatus)[keyof typeof UpdateProjectBodyStatus];
+
+export const UpdateProjectBodyStatus = {
+  active: "active",
+  completed: "completed",
+  archived: "archived",
+} as const;
+
+export interface UpdateProjectBody {
+  status: UpdateProjectBodyStatus;
 }
 
 export type CreateProjectBodyCategory =
@@ -170,6 +193,23 @@ export interface GoalDecomposition {
   steps: GoalDecompositionStepsItem[];
   totalEstimatedTime: string;
 }
+
+export type ListProjectsParams = {
+  /**
+   * Filter by status. Defaults to showing active and completed (not archived).
+   */
+  status?: ListProjectsStatus;
+};
+
+export type ListProjectsStatus =
+  (typeof ListProjectsStatus)[keyof typeof ListProjectsStatus];
+
+export const ListProjectsStatus = {
+  active: "active",
+  completed: "completed",
+  archived: "archived",
+  all: "all",
+} as const;
 
 export type ListTagsParams = {
   search?: string;
