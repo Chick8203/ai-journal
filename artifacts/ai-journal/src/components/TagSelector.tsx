@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { X, Tag as TagIcon, Loader2 } from "lucide-react";
+import { X, Tag as TagIcon, Loader2, Trash2 } from "lucide-react";
 import { Tag } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +23,7 @@ export function TagSelector({ selectedTags, onChange, placeholder = "搜尋或�
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [highlightIndex, setHighlightIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -75,6 +76,22 @@ export function TagSelector({ selectedTags, onChange, placeholder = "搜尋或�
 
   const removeTag = (tagId: number) => {
     onChange(selectedTags.filter((t) => t.id !== tagId));
+  };
+
+  const deleteTagFromSystem = async (tag: Tag, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!confirm(`確定要永久刪除標籤「${tag.name}」嗎？這將從所有日誌中移除此標籤。`)) return;
+    setDeletingId(tag.id);
+    try {
+      const res = await fetch(`/api/tags/${tag.id}`, { method: "DELETE" });
+      if (res.ok || res.status === 204) {
+        onChange(selectedTags.filter((t) => t.id !== tag.id));
+        fetchTags(query);
+      }
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const createTag = async () => {
@@ -183,7 +200,7 @@ export function TagSelector({ selectedTags, onChange, placeholder = "搜尋或�
                 }}
                 onMouseEnter={() => setHighlightIndex(idx)}
                 className={cn(
-                  "flex items-center gap-2.5 px-3 py-2 cursor-pointer text-sm transition-colors",
+                  "flex items-center gap-2.5 px-3 py-2 cursor-pointer text-sm transition-colors group/item",
                   highlightIndex === idx ? "bg-accent" : "hover:bg-accent/50"
                 )}
               >
@@ -191,7 +208,20 @@ export function TagSelector({ selectedTags, onChange, placeholder = "搜尋或�
                   className="w-3 h-3 rounded-full flex-shrink-0"
                   style={{ backgroundColor: tag.color }}
                 />
-                <span>{tag.name}</span>
+                <span className="flex-1">{tag.name}</span>
+                <button
+                  type="button"
+                  onMouseDown={(e) => deleteTagFromSystem(tag, e)}
+                  disabled={deletingId === tag.id}
+                  className="opacity-0 group-hover/item:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 hover:text-destructive text-muted-foreground flex-shrink-0"
+                  title={`刪除標籤「${tag.name}」`}
+                >
+                  {deletingId === tag.id ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3 h-3" />
+                  )}
+                </button>
               </li>
             ))}
             {showCreate && (

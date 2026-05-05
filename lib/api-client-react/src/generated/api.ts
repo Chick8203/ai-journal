@@ -830,6 +830,90 @@ export const useCreateTag = <
 };
 
 /**
+ * @summary Delete a tag and unlink from all entries
+ */
+export const getDeleteTagUrl = (tagId: number) => {
+  return `/api/tags/${tagId}`;
+};
+
+export const deleteTag = async (
+  tagId: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteTagUrl(tagId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteTagMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteTag>>,
+    TError,
+    { tagId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteTag>>,
+  TError,
+  { tagId: number },
+  TContext
+> => {
+  const mutationKey = ["deleteTag"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteTag>>,
+    { tagId: number }
+  > = (props) => {
+    const { tagId } = props ?? {};
+
+    return deleteTag(tagId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteTagMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteTag>>
+>;
+
+export type DeleteTagMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Delete a tag and unlink from all entries
+ */
+export const useDeleteTag = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteTag>>,
+    TError,
+    { tagId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteTag>>,
+  TError,
+  { tagId: number },
+  TContext
+> => {
+  return useMutation(getDeleteTagMutationOptions(options));
+};
+
+/**
  * @summary List journal entries
  */
 export const getListEntriesUrl = (params?: ListEntriesParams) => {

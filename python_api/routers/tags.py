@@ -37,6 +37,15 @@ def list_tags(search: Optional[str] = Query(None)):
         return [{"id": r["id"], "name": r["name"], "color": r["color"]} for r in rows]
 
 
+@router.delete("/{tag_id}", status_code=204)
+def delete_tag(tag_id: int):
+    with get_db() as conn:
+        row = conn.execute("SELECT id FROM tags WHERE id = ?", (tag_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Tag not found")
+        conn.execute("DELETE FROM tags WHERE id = ?", (tag_id,))
+
+
 @router.post("", status_code=201)
 def create_tag(body: CreateTagBody):
     name = body.name.strip()

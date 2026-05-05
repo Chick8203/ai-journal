@@ -204,6 +204,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/Tag"
 
+  /tags/{tagId}:
+    delete:
+      operationId: deleteTag
+      tags: [tags]
+      summary: Delete a tag and unlink from all entries
+      parameters:
+        - name: tagId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /entries:
     get:
       operationId: listEntries

@@ -25,7 +25,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import {
   FolderKanban, Trash2, Code, Briefcase, Layout,
   CheckCircle2, Archive, RotateCcw, AlignLeft, CalendarIcon,
-  ChevronRight, X,
+  ChevronRight, X, Download,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -101,6 +101,49 @@ function EntryDetailDialog({
   );
 }
 
+function exportToMarkdown(project: Project, entries: Entry[]) {
+  const lines: string[] = [];
+  lines.push(`# ${project.name}`);
+  lines.push("");
+  if (project.description) {
+    lines.push(`> ${project.description}`);
+    lines.push("");
+  }
+  lines.push(`**分類：** ${project.category === "engineering" ? "工程開發" : project.category === "office" ? "一般辦公" : "一般"}`);
+  lines.push(`**狀態：** ${project.status === "completed" ? "已完工" : project.status === "archived" ? "已封存" : "進行中"}`);
+  lines.push(`**建立日期：** ${format(new Date(project.createdAt), "yyyy-MM-dd")}`);
+  if (project.completedAt) {
+    lines.push(`**完工日期：** ${format(new Date(project.completedAt), "yyyy-MM-dd")}`);
+  }
+  lines.push(`**日誌數量：** ${entries.length} 篇`);
+  lines.push("");
+  lines.push("---");
+  lines.push("");
+
+  for (const entry of entries) {
+    lines.push(`## ${format(new Date(entry.date), "yyyy-MM-dd")}`);
+    lines.push("");
+    const templateLabel = entry.template === "engineering" ? "工程開發" : entry.template === "office" ? "一般辦公" : "自由格式";
+    const meta: string[] = [`版型：${templateLabel}`];
+    if (entry.mood) meta.push(`心情：${entry.mood}/5`);
+    if (entry.tags?.length) meta.push(`標籤：${entry.tags.map((t) => t.name).join("、")}`);
+    lines.push(`*${meta.join("　·　")}*`);
+    lines.push("");
+    lines.push(entry.content);
+    lines.push("");
+    lines.push("---");
+    lines.push("");
+  }
+
+  const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${project.name}-日誌匯出-${format(new Date(), "yyyyMMdd")}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function ProjectEntriesSheet({
   project,
   open,
@@ -121,10 +164,25 @@ function ProjectEntriesSheet({
       <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
         <SheetContent className="sm:max-w-2xl w-full flex flex-col p-0 border-l">
           <SheetHeader className="p-6 border-b border-border bg-sidebar/50">
-            <SheetTitle className="font-serif text-2xl">{project.name}</SheetTitle>
-            <SheetDescription>
-              {project.description || "無描述"} · 共 {project.entryCount} 篇日誌
-            </SheetDescription>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <SheetTitle className="font-serif text-2xl">{project.name}</SheetTitle>
+                <SheetDescription className="mt-1">
+                  {project.description || "無描述"} · 共 {project.entryCount} 篇日誌
+                </SheetDescription>
+              </div>
+              {entries && entries.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 flex items-center gap-1.5"
+                  onClick={() => exportToMarkdown(project, entries)}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  匯出 Markdown
+                </Button>
+              )}
+            </div>
           </SheetHeader>
           <ScrollArea className="flex-1 p-6">
             {isLoading ? (
