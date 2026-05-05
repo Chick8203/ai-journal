@@ -9,6 +9,7 @@ import {
   ListProjectsStatus,
   UpdateProjectBodyStatus,
   type Project,
+  type Entry,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -24,7 +25,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import {
   FolderKanban, Trash2, Code, Briefcase, Layout,
   CheckCircle2, Archive, RotateCcw, AlignLeft, CalendarIcon,
-  ChevronRight,
+  ChevronRight, X,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -43,6 +44,63 @@ const STATUS_TABS = [
   { value: ListProjectsStatus.archived, label: "已封存" },
 ] as const;
 
+function EntryDetailDialog({
+  entry,
+  onClose,
+}: {
+  entry: Entry;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="p-6 border-b border-border shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <CalendarIcon className="w-3 h-3" />
+                {format(new Date(entry.date), "yyyy-MM-dd")}
+              </span>
+              {entry.mood && (
+                <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-md font-medium">
+                  心情 {entry.mood}/5
+                </span>
+              )}
+              <span className="text-xs px-2 py-0.5 bg-secondary rounded-md text-muted-foreground">
+                {entry.template === "engineering" ? "工程開發" : entry.template === "office" ? "一般辦公" : "自由格式"}
+              </span>
+            </div>
+          </div>
+          <DialogTitle className="sr-only">日誌詳情</DialogTitle>
+          <DialogDescription className="sr-only">完整日誌內容</DialogDescription>
+        </DialogHeader>
+        <ScrollArea className="flex-1 p-6">
+          <pre className="text-sm text-foreground whitespace-pre-wrap leading-relaxed font-sans">
+            {entry.content}
+          </pre>
+          {entry.tags && entry.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-6 pt-4 border-t border-border">
+              {entry.tags.map((tag) => (
+                <span
+                  key={tag.id}
+                  className="inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full"
+                  style={{
+                    backgroundColor: hexToRgba(tag.color, 0.15),
+                    color: tag.color,
+                    border: `1px solid ${hexToRgba(tag.color, 0.35)}`,
+                  }}
+                >
+                  {tag.name}
+                </span>
+              ))}
+            </div>
+          )}
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ProjectEntriesSheet({
   project,
   open,
@@ -52,75 +110,91 @@ function ProjectEntriesSheet({
   open: boolean;
   onClose: () => void;
 }) {
+  const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
   const { data: entries, isLoading } = useGetProjectEntries(
     project.id,
     { query: { enabled: open } }
   );
 
   return (
-    <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <SheetContent className="sm:max-w-2xl w-full flex flex-col p-0 border-l">
-        <SheetHeader className="p-6 border-b border-border bg-sidebar/50">
-          <SheetTitle className="font-serif text-2xl">{project.name}</SheetTitle>
-          <SheetDescription>
-            {project.description || "無描述"} · 共 {project.entryCount} 篇日誌
-          </SheetDescription>
-        </SheetHeader>
-        <ScrollArea className="flex-1 p-6">
-          {isLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)}
-            </div>
-          ) : !entries?.length ? (
-            <div className="text-center py-20 border rounded-lg border-dashed">
-              <AlignLeft className="h-10 w-10 mx-auto text-muted-foreground mb-3 opacity-40" />
-              <p className="text-muted-foreground">此專案尚無日誌記錄。</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {entries.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="border rounded-lg p-4 bg-card hover:border-primary/30 transition-colors"
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                      <CalendarIcon className="w-3 h-3" />
-                      {format(new Date(entry.date), "yyyy-MM-dd")}
-                    </span>
-                    {entry.mood && (
-                      <span className="text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded">
-                        心情 {entry.mood}/5
+    <>
+      <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+        <SheetContent className="sm:max-w-2xl w-full flex flex-col p-0 border-l">
+          <SheetHeader className="p-6 border-b border-border bg-sidebar/50">
+            <SheetTitle className="font-serif text-2xl">{project.name}</SheetTitle>
+            <SheetDescription>
+              {project.description || "無描述"} · 共 {project.entryCount} 篇日誌
+            </SheetDescription>
+          </SheetHeader>
+          <ScrollArea className="flex-1 p-6">
+            {isLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)}
+              </div>
+            ) : !entries?.length ? (
+              <div className="text-center py-20 border rounded-lg border-dashed">
+                <AlignLeft className="h-10 w-10 mx-auto text-muted-foreground mb-3 opacity-40" />
+                <p className="text-muted-foreground">此專案尚無日誌記錄。</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {entries.map((entry) => (
+                  <div
+                    key={entry.id}
+                    onClick={() => setSelectedEntry(entry)}
+                    className="border rounded-lg p-4 bg-card hover:border-primary/40 hover:bg-accent/30 transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <CalendarIcon className="w-3 h-3" />
+                          {format(new Date(entry.date), "yyyy-MM-dd")}
+                        </span>
+                        {entry.mood && (
+                          <span className="text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded">
+                            心情 {entry.mood}/5
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                        點擊閱讀全文 <ChevronRight className="w-3 h-3" />
                       </span>
+                    </div>
+                    <p className="text-sm text-foreground line-clamp-3 whitespace-pre-wrap leading-relaxed">
+                      {entry.content}
+                    </p>
+                    {entry.tags && entry.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {entry.tags.map((tag) => (
+                          <span
+                            key={tag.id}
+                            className="inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full"
+                            style={{
+                              backgroundColor: hexToRgba(tag.color, 0.15),
+                              color: tag.color,
+                              border: `1px solid ${hexToRgba(tag.color, 0.35)}`,
+                            }}
+                          >
+                            {tag.name}
+                          </span>
+                        ))}
+                      </div>
                     )}
                   </div>
-                  <p className="text-sm text-foreground line-clamp-3 whitespace-pre-wrap leading-relaxed">
-                    {entry.content}
-                  </p>
-                  {entry.tags && entry.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {entry.tags.map((tag) => (
-                        <span
-                          key={tag.id}
-                          className="inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full"
-                          style={{
-                            backgroundColor: hexToRgba(tag.color, 0.15),
-                            color: tag.color,
-                            border: `1px solid ${hexToRgba(tag.color, 0.35)}`,
-                          }}
-                        >
-                          {tag.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
-      </SheetContent>
-    </Sheet>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      {selectedEntry && (
+        <EntryDetailDialog
+          entry={selectedEntry}
+          onClose={() => setSelectedEntry(null)}
+        />
+      )}
+    </>
   );
 }
 
