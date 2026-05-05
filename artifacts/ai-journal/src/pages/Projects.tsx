@@ -38,7 +38,7 @@ function hexToRgba(hex: string, alpha: number): string {
 }
 
 const STATUS_TABS = [
-  { value: undefined, label: "進行中" },
+  { value: ListProjectsStatus.active, label: "進行中" },
   { value: ListProjectsStatus.completed, label: "已完工" },
   { value: ListProjectsStatus.archived, label: "已封存" },
 ] as const;
@@ -126,7 +126,7 @@ function ProjectEntriesSheet({
 
 export default function Projects() {
   const { toast } = useToast();
-  const [statusFilter, setStatusFilter] = useState<ListProjectsStatus | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<ListProjectsStatus>(ListProjectsStatus.active);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newProject, setNewProject] = useState({
