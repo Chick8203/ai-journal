@@ -53,7 +53,7 @@ function ProjectEntriesSheet({
   onClose: () => void;
 }) {
   const { data: entries, isLoading } = useGetProjectEntries(
-    { projectId: project.id },
+    project.id,
     { query: { enabled: open } }
   );
 
