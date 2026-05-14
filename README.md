@@ -242,4 +242,3 @@ App 內建三種 AI provider，在「設定」頁切換：
 | AI 分析 JSON parse 失敗 | 本地模型太小，換 7B 以上 |
 | Tauri 建置 Rust 錯誤 | VS Build Tools 沒裝、或缺 C++ 桌面開發工作負載 |
 "" 
-_最後更新：$(Get-Date -Format 'yyyy-MM-dd')_
