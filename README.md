@@ -171,7 +171,7 @@ hiddenimports=[
 ## 📁 專案結構
 
 ```
-AI-Zhi-Nang-Ri-Zhi/
+ai-journal/
 ├── artifacts/ai-journal/          # React/Vite 前端 (Tauri WebView)
 │   ├── src/
 │   │   ├── pages/                 # Journal / Projects / Settings
