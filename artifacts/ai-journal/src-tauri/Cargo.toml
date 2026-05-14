@@ -1,0 +1,12 @@
+[package]
+name = "ai-journal-desktop"
+version = "0.1.0"
+description = "AI Journal desktop app"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0", features = [] }
+tauri-plugin-shell = "2.0"

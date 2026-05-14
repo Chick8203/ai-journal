@@ -47,3 +47,38 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+.env.local
+
+# Build artifacts
+build/
+dist/
+*.spec.bak
+
+# Rust / Tauri
+artifacts/ai-journal/src-tauri/target/
+artifacts/ai-journal/src-tauri/gen/
+
+# Bundled binaries (built locally by each dev)
+artifacts/ai-journal/src-tauri/sidecars/python-api-*.exe
+
+# SQLite local data (contains API keys — never commit!)
+journal.db
+journal.db-journal
+journal.db-wal
+journal.db-shm
+*.sqlite
+*.sqlite3
+
+# Claude Code state
+.claude/
+
+# OS
+desktop.ini

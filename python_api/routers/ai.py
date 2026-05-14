@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import date, timedelta
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -7,6 +8,28 @@ from ..database import get_db
 from ..ai_client import generate_text
 
 router = APIRouter(prefix="/ai", tags=["ai"])
+
+
+def _parse_json_loose(raw: str) -> dict:
+    """Extract a JSON object from model output that may include prose, code fences, or trailing text."""
+    text = raw.strip()
+    # strip markdown code fences
+    if text.startswith("```"):
+        m = re.search(r"```(?:json)?\s*(.+?)```", text, re.DOTALL)
+        if m:
+            text = m.group(1).strip()
+    # try direct parse first
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    # fall back to first {...} block
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end > start:
+        candidate = text[start : end + 1]
+        return json.loads(candidate)
+    raise ValueError(f"模型輸出不是有效 JSON：{text[:200]}")
 
 
 class AnalyzeBottleneckBody(BaseModel):
@@ -112,14 +135,8 @@ def analyze_bottleneck(body: AnalyzeBottleneckBody):
 請根據以上資料進行深入分析，找出工作瓶頸並提供具體建議。"""
 
     try:
-        raw = generate_text(prompt, system_prompt)
-        raw = raw.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        data = json.loads(raw)
-        return data
+        raw = generate_text(prompt, system_prompt, json_mode=True)
+        return _parse_json_loose(raw)
     except Exception as e:
         return {
             "efficiency": {
@@ -129,7 +146,7 @@ def analyze_bottleneck(body: AnalyzeBottleneckBody):
                 "score": 60.0,
             },
             "bottlenecks": ["AI 分析暫時無法使用，請稍後再試"],
-            "suggestions": ["請確認 Gemini API 設定是否正確"],
+            "suggestions": ["小型本地模型（如 270M）可能無法穩定輸出 JSON，建議改用 7B 以上模型"],
             "summary": f"分析時發生錯誤：{str(e)[:100]}",
         }
 
@@ -169,14 +186,8 @@ def decompose_goal(body: DecomposeGoalBody):
 請產生 5-8 個具體可執行的步驟，每個步驟都要有明確的產出物。"""
 
     try:
-        raw = generate_text(prompt, system_prompt)
-        raw = raw.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        data = json.loads(raw)
-        return data
+        raw = generate_text(prompt, system_prompt, json_mode=True)
+        return _parse_json_loose(raw)
     except Exception as e:
         return {
             "goal": body.goal,

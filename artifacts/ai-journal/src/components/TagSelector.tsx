@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { X, Tag as TagIcon, Loader2, Trash2 } from "lucide-react";
 import { Tag } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 
 function hexToRgba(hex: string, alpha: number): string {
   const clean = hex.replace("#", "");
@@ -33,9 +34,8 @@ export function TagSelector({ selectedTags, onChange, placeholder = "搜尋或�
     const url = search.trim()
       ? `/api/tags?search=${encodeURIComponent(search)}`
       : "/api/tags";
-    fetch(url)
-      .then((r) => r.json())
-      .then((data: Tag[]) => setAllTags(data))
+    apiFetch<Tag[]>(url)
+      .then((data) => setAllTags(data))
       .catch(() => {});
   }, []);
 
@@ -84,11 +84,10 @@ export function TagSelector({ selectedTags, onChange, placeholder = "搜尋或�
     if (!confirm(`確定要永久刪除標籤「${tag.name}」嗎？這將從所有日誌中移除此標籤。`)) return;
     setDeletingId(tag.id);
     try {
-      const res = await fetch(`/api/tags/${tag.id}`, { method: "DELETE" });
-      if (res.ok || res.status === 204) {
-        onChange(selectedTags.filter((t) => t.id !== tag.id));
-        fetchTags(query);
-      }
+      await apiFetch(`/api/tags/${tag.id}`, { method: "DELETE" });
+      onChange(selectedTags.filter((t) => t.id !== tag.id));
+      fetchTags(query);
+    } catch {
     } finally {
       setDeletingId(null);
     }
@@ -99,16 +98,14 @@ export function TagSelector({ selectedTags, onChange, placeholder = "搜尋或�
     if (!name || isCreating) return;
     setIsCreating(true);
     try {
-      const res = await fetch("/api/tags", {
+      const tag = await apiFetch<Tag>("/api/tags", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
-      if (res.ok) {
-        const tag: Tag = await res.json();
-        addTag(tag);
-        fetchTags("");
-      }
+      addTag(tag);
+      fetchTags("");
+    } catch {
     } finally {
       setIsCreating(false);
     }

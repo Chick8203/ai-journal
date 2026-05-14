@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AI Journal",
+  "version": "0.1.0",
+  "identifier": "com.aijournal.desktop",
+  "build": {
+    "beforeDevCommand": "corepack pnpm --filter @workspace/ai-journal run dev",
+    "beforeBuildCommand": "corepack pnpm --filter @workspace/ai-journal run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist/public"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "AI 智囊日誌",
+        "width": 1280,
+        "height": 860,
+        "minWidth": 980,
+        "minHeight": 700
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "nsis",
+    "externalBin": [
+      "sidecars/python-api"
+    ]
+  }
+}

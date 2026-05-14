@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useListEntries,
   useCreateEntry,
@@ -8,12 +8,14 @@ import {
   CreateEntryBodyTemplate,
   Tag,
 } from "@workspace/api-client-react";
+import { apiFetch } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import {
   Plus, Calendar as CalendarIcon, Tag as TagIcon, Trash2,
-  AlignLeft, Edit3, Briefcase, Code, FileText,
+  AlignLeft, Edit3, Briefcase, Code, FileText, X, Check,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,23 +38,17 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-const TEMPLATES = {
-  engineering: `【今日目標】
+interface JournalTemplate {
+  id: string;
+  name: string;
+  content: string;
+}
 
-【完成事項】
--
-
-【遇到瓶頸】
-
-【明日計畫】`,
-  office: `【今日重點】
-
-【心得筆記】
--
-
-【行動項目】`,
-  freeform: "",
-};
+const DEFAULT_TEMPLATES: JournalTemplate[] = [
+  { id: "freeform",    name: "自由格式", content: "" },
+  { id: "engineering", name: "工程開發", content: "【今日目標】\n\n【完成事項】\n-\n\n【遇到瓶頸】\n\n【明日計畫】" },
+  { id: "office",      name: "一般辦公", content: "【今日重點】\n\n【心得筆記】\n-\n\n【行動項目】" },
+];
 
 export default function Journal() {
   const { toast } = useToast();
@@ -63,22 +59,34 @@ export default function Journal() {
   const updateEntry = useUpdateEntry();
   const deleteEntry = useDeleteEntry();
 
+  const [templates, setTemplates] = useState<JournalTemplate[]>(DEFAULT_TEMPLATES);
+  useEffect(() => {
+    apiFetch<JournalTemplate[]>("/api/settings/templates")
+      .then((data) => { if (Array.isArray(data) && data.length > 0) setTemplates(data); })
+      .catch(() => {});
+  }, []);
+
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
 
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [projectId, setProjectId] = useState<string>("");
-  const [template, setTemplate] = useState<CreateEntryBodyTemplate>(CreateEntryBodyTemplate.freeform);
+  const [template, setTemplate] = useState<string>("freeform");
   const [content, setContent] = useState("");
   const [mood, setMood] = useState<string>("");
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
+
+  const [addingTemplate, setAddingTemplate] = useState(false);
+  const [newTplName, setNewTplName] = useState("");
+  const [newTplContent, setNewTplContent] = useState("");
+  const [tplSaving, setTplSaving] = useState(false);
 
   const handleOpenCreate = () => {
     setEditingId(null);
     setDate(format(new Date(), "yyyy-MM-dd"));
     setProjectId(projects?.[0]?.id.toString() || "");
-    setTemplate(CreateEntryBodyTemplate.freeform);
-    setContent("");
+    setTemplate(templates[0]?.id ?? "freeform");
+    setContent(templates[0]?.content ?? "");
     setMood("");
     setSelectedTags([]);
     setIsSheetOpen(true);
@@ -88,17 +96,19 @@ export default function Journal() {
     setEditingId(entry.id);
     setDate(format(new Date(entry.date), "yyyy-MM-dd"));
     setProjectId(entry.projectId.toString());
-    setTemplate(entry.template as CreateEntryBodyTemplate);
+    setTemplate(entry.template as string);
     setContent(entry.content);
     setMood(entry.mood?.toString() || "");
     setSelectedTags(entry.tags ?? []);
     setIsSheetOpen(true);
   };
 
-  const handleTemplateChange = (val: CreateEntryBodyTemplate) => {
+  const handleTemplateChange = (val: string) => {
     setTemplate(val);
-    if (!content.trim() || Object.values(TEMPLATES).some((t) => t.trim() === content.trim())) {
-      setContent(TEMPLATES[val]);
+    const found = templates.find((t) => t.id === val);
+    const isCurrentATemplate = templates.some((t) => t.content.trim() === content.trim());
+    if (!content.trim() || isCurrentATemplate) {
+      setContent(found?.content ?? "");
     }
   };
 
@@ -127,7 +137,7 @@ export default function Journal() {
           data: {
             date,
             projectId: parseInt(projectId),
-            template,
+            template: template as unknown as CreateEntryBodyTemplate,
             content,
             mood: moodNum,
             tags: tagNames,
@@ -139,6 +149,50 @@ export default function Journal() {
       refetchEntries();
     } catch {
       toast({ title: "儲存失敗", variant: "destructive" });
+    }
+  };
+
+  const handleAddTemplate = async () => {
+    if (!newTplName.trim()) {
+      toast({ title: "請輸入模板名稱", variant: "destructive" });
+      return;
+    }
+    setTplSaving(true);
+    try {
+      const created = await apiFetch<JournalTemplate>("/api/settings/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newTplName.trim(), content: newTplContent }),
+      });
+      setTemplates((prev) => [...prev, created]);
+      setTemplate(created.id);
+      setContent(created.content);
+      setNewTplName("");
+      setNewTplContent("");
+      setAddingTemplate(false);
+      toast({ title: "模板已新增" });
+    } catch {
+      toast({ title: "新增失敗", variant: "destructive" });
+    } finally {
+      setTplSaving(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (tpl: JournalTemplate, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (templates.length <= 1) return;
+    if (!confirm(`確定要刪除「${tpl.name}」模板嗎？`)) return;
+    try {
+      await apiFetch(`/api/settings/templates/${tpl.id}`, { method: "DELETE" });
+      const next = templates.filter((t) => t.id !== tpl.id);
+      setTemplates(next);
+      if (template === tpl.id) {
+        setTemplate(next[0].id);
+        setContent(next[0].content);
+      }
+      toast({ title: "模板已刪除" });
+    } catch (err: any) {
+      toast({ title: "刪除失敗", description: err?.message, variant: "destructive" });
     }
   };
 
@@ -299,16 +353,70 @@ export default function Journal() {
               {!editingId && (
                 <div className="space-y-2">
                   <Label>版型範本</Label>
-                  <Select value={template} onValueChange={(v) => handleTemplateChange(v as CreateEntryBodyTemplate)}>
-                    <SelectTrigger className="bg-card">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="freeform">自由格式</SelectItem>
-                      <SelectItem value="engineering">工程開發</SelectItem>
-                      <SelectItem value="office">一般辦公</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="flex flex-wrap gap-2">
+                    {templates.map((t) => (
+                      <div
+                        key={t.id}
+                        className={cn(
+                          "flex items-center gap-1 pl-3 pr-1 py-1 rounded-full border text-sm cursor-pointer transition-colors select-none",
+                          template === t.id
+                            ? "border-primary bg-primary/10 text-primary font-medium"
+                            : "border-border bg-card text-foreground hover:border-muted-foreground/50"
+                        )}
+                        onClick={() => handleTemplateChange(t.id)}
+                      >
+                        <span>{t.name}</span>
+                        {templates.length > 1 && (
+                          <button
+                            className="ml-0.5 rounded-full p-0.5 opacity-40 hover:opacity-100 hover:bg-destructive/15 hover:text-destructive transition-colors"
+                            onClick={(e) => handleDeleteTemplate(t, e)}
+                            title="刪除模板"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {addingTemplate ? (
+                    <div className="mt-2 p-3 rounded-lg border border-border bg-card space-y-2">
+                      <Input
+                        placeholder="模板名稱"
+                        value={newTplName}
+                        onChange={(e) => setNewTplName(e.target.value)}
+                        className="h-8 text-sm"
+                        autoFocus
+                      />
+                      <Textarea
+                        placeholder="預設內容（選填）"
+                        value={newTplContent}
+                        onChange={(e) => setNewTplContent(e.target.value)}
+                        className="min-h-[80px] text-sm font-sans resize-none bg-background"
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" className="h-7 text-xs" onClick={handleAddTemplate} disabled={tplSaving}>
+                          <Check className="h-3 w-3 mr-1" />
+                          {tplSaving ? "新增中..." : "確認新增"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs"
+                          onClick={() => { setAddingTemplate(false); setNewTplName(""); setNewTplContent(""); }}
+                        >
+                          取消
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
+                      onClick={() => setAddingTemplate(true)}
+                    >
+                      <Plus className="h-3 w-3" /> 新增模板
+                    </button>
+                  )}
                 </div>
               )}
 

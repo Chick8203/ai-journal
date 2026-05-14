@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useListProjects,
   useCreateProject,
@@ -11,12 +11,13 @@ import {
   type Project,
   type Entry,
 } from "@workspace/api-client-react";
+import { apiFetch } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -25,9 +26,20 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import {
   FolderKanban, Trash2, Code, Briefcase, Layout,
   CheckCircle2, Archive, RotateCcw, AlignLeft, CalendarIcon,
-  ChevronRight, X, Download,
+  ChevronRight, X, Download, Plus, Check,
 } from "lucide-react";
 import { format } from "date-fns";
+
+interface ProjectCategory {
+  id: string;
+  name: string;
+}
+
+const DEFAULT_CATEGORIES: ProjectCategory[] = [
+  { id: "engineering", name: "工程開發" },
+  { id: "office",      name: "一般辦公" },
+  { id: "general",     name: "一般" },
+];
 
 function hexToRgba(hex: string, alpha: number): string {
   const clean = hex.replace("#", "");
@@ -43,6 +55,18 @@ const STATUS_TABS = [
   { value: ListProjectsStatus.completed, label: "已完工" },
   { value: ListProjectsStatus.archived, label: "已封存" },
 ] as const;
+
+async function saveMarkdown(
+  content: string,
+  filename: string,
+): Promise<boolean> {
+  const res = await apiFetch<{ saved: boolean; path: string }>("/api/export/markdown", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content, filename }),
+  });
+  return res.saved;
+}
 
 function EntryDetailDialog({
   entry,
@@ -101,7 +125,14 @@ function EntryDetailDialog({
   );
 }
 
-function exportToMarkdown(project: Project, entries: Entry[]) {
+function buildMarkdown(
+  project: Project,
+  entries: Entry[],
+  getCategoryLabel: (cat: string) => string,
+): string {
+  const statusLabel =
+    project.status === "completed" ? "已完工" : project.status === "archived" ? "已封存" : "進行中";
+
   const lines: string[] = [];
   lines.push(`# ${project.name}`);
   lines.push("");
@@ -109,8 +140,8 @@ function exportToMarkdown(project: Project, entries: Entry[]) {
     lines.push(`> ${project.description}`);
     lines.push("");
   }
-  lines.push(`**分類：** ${project.category === "engineering" ? "工程開發" : project.category === "office" ? "一般辦公" : "一般"}`);
-  lines.push(`**狀態：** ${project.status === "completed" ? "已完工" : project.status === "archived" ? "已封存" : "進行中"}`);
+  lines.push(`**分類：** ${getCategoryLabel(project.category)}`);
+  lines.push(`**狀態：** ${statusLabel}`);
   lines.push(`**建立日期：** ${format(new Date(project.createdAt), "yyyy-MM-dd")}`);
   if (project.completedAt) {
     lines.push(`**完工日期：** ${format(new Date(project.completedAt), "yyyy-MM-dd")}`);
@@ -123,11 +154,10 @@ function exportToMarkdown(project: Project, entries: Entry[]) {
   for (const entry of entries) {
     lines.push(`## ${format(new Date(entry.date), "yyyy-MM-dd")}`);
     lines.push("");
-    const templateLabel = entry.template === "engineering" ? "工程開發" : entry.template === "office" ? "一般辦公" : "自由格式";
-    const meta: string[] = [`版型：${templateLabel}`];
+    const meta: string[] = [];
     if (entry.mood) meta.push(`心情：${entry.mood}/5`);
     if (entry.tags?.length) meta.push(`標籤：${entry.tags.map((t) => t.name).join("、")}`);
-    lines.push(`*${meta.join("　·　")}*`);
+    if (meta.length) lines.push(`*${meta.join("　·　")}*`);
     lines.push("");
     lines.push(entry.content);
     lines.push("");
@@ -135,23 +165,19 @@ function exportToMarkdown(project: Project, entries: Entry[]) {
     lines.push("");
   }
 
-  const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${project.name}-日誌匯出-${format(new Date(), "yyyyMMdd")}.md`;
-  a.click();
-  URL.revokeObjectURL(url);
+  return lines.join("\n");
 }
 
 function ProjectEntriesSheet({
   project,
   open,
   onClose,
+  categories,
 }: {
   project: Project;
   open: boolean;
   onClose: () => void;
+  categories: ProjectCategory[];
 }) {
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
   const { data: entries, isLoading } = useGetProjectEntries(
@@ -164,24 +190,11 @@ function ProjectEntriesSheet({
       <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
         <SheetContent className="sm:max-w-2xl w-full flex flex-col p-0 border-l">
           <SheetHeader className="p-6 border-b border-border bg-sidebar/50">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <SheetTitle className="font-serif text-2xl">{project.name}</SheetTitle>
-                <SheetDescription className="mt-1">
-                  {project.description || "無描述"} · 共 {project.entryCount} 篇日誌
-                </SheetDescription>
-              </div>
-              {entries && entries.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0 flex items-center gap-1.5"
-                  onClick={() => exportToMarkdown(project, entries)}
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  匯出 Markdown
-                </Button>
-              )}
+            <div className="min-w-0">
+              <SheetTitle className="font-serif text-2xl">{project.name}</SheetTitle>
+              <SheetDescription className="mt-1">
+                {project.description || "無描述"} · 共 {project.entryCount} 篇日誌
+              </SheetDescription>
             </div>
           </SheetHeader>
           <ScrollArea className="flex-1 p-6">
@@ -261,11 +274,18 @@ export default function Projects() {
   const [statusFilter, setStatusFilter] = useState<ListProjectsStatus>(ListProjectsStatus.active);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [newProject, setNewProject] = useState({
-    name: "",
-    description: "",
-    category: CreateProjectBodyCategory.engineering as CreateProjectBodyCategory,
-  });
+  const [newProject, setNewProject] = useState({ name: "", description: "", category: "engineering" });
+
+  const [categories, setCategories] = useState<ProjectCategory[]>(DEFAULT_CATEGORIES);
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+  const [catSaving, setCatSaving] = useState(false);
+
+  useEffect(() => {
+    apiFetch<ProjectCategory[]>("/api/settings/categories")
+      .then((data) => { if (Array.isArray(data) && data.length > 0) setCategories(data); })
+      .catch(() => {});
+  }, []);
 
   const { data: projects, isLoading, refetch } = useListProjects({ status: statusFilter });
   const createProject = useCreateProject();
@@ -278,13 +298,72 @@ export default function Projects() {
       return;
     }
     try {
-      await createProject.mutateAsync({ data: newProject });
+      await createProject.mutateAsync({
+        data: {
+          ...newProject,
+          category: newProject.category as unknown as CreateProjectBodyCategory,
+        },
+      });
       toast({ title: "專案建立成功" });
       setIsDialogOpen(false);
-      setNewProject({ name: "", description: "", category: CreateProjectBodyCategory.engineering });
+      setNewProject({ name: "", description: "", category: categories[0]?.id ?? "general" });
       refetch();
     } catch {
       toast({ title: "建立失敗", variant: "destructive" });
+    }
+  };
+
+  const handleAddCategory = async () => {
+    if (!newCatName.trim()) {
+      toast({ title: "請輸入分類名稱", variant: "destructive" });
+      return;
+    }
+    setCatSaving(true);
+    try {
+      const created = await apiFetch<ProjectCategory>("/api/settings/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newCatName.trim() }),
+      });
+      setCategories((prev) => [...prev, created]);
+      setNewProject((prev) => ({ ...prev, category: created.id }));
+      setNewCatName("");
+      setAddingCategory(false);
+      toast({ title: "分類已新增" });
+    } catch {
+      toast({ title: "新增失敗", variant: "destructive" });
+    } finally {
+      setCatSaving(false);
+    }
+  };
+
+  const handleExport = async (project: Project, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const entries = await apiFetch<Entry[]>(`/api/projects/${project.id}/entries`);
+      const content = buildMarkdown(project, entries, getCategoryLabel);
+      const filename = `${project.name}-日誌匯出-${format(new Date(), "yyyyMMdd")}.md`;
+      const saved = await saveMarkdown(content, filename);
+      if (saved) toast({ title: "匯出成功" });
+    } catch {
+      toast({ title: "匯出失敗", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteCategory = async (cat: ProjectCategory, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (categories.length <= 1) return;
+    if (!confirm(`確定要刪除「${cat.name}」分類嗎？`)) return;
+    try {
+      await apiFetch(`/api/settings/categories/${cat.id}`, { method: "DELETE" });
+      const next = categories.filter((c) => c.id !== cat.id);
+      setCategories(next);
+      if (newProject.category === cat.id) {
+        setNewProject((prev) => ({ ...prev, category: next[0].id }));
+      }
+      toast({ title: "分類已刪除" });
+    } catch (err: any) {
+      toast({ title: "刪除失敗", description: err?.message, variant: "destructive" });
     }
   };
 
@@ -329,13 +408,8 @@ export default function Projects() {
     }
   };
 
-  const getCategoryLabel = (category: string) => {
-    switch (category) {
-      case "engineering": return "工程開發";
-      case "office": return "一般辦公";
-      default: return "一般";
-    }
-  };
+  const getCategoryLabel = (category: string) =>
+    categories.find((c) => c.id === category)?.name ?? category;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -377,19 +451,65 @@ export default function Projects() {
               </div>
               <div className="space-y-2">
                 <Label>分類</Label>
-                <Select
-                  value={newProject.category}
-                  onValueChange={(v) => setNewProject({ ...newProject, category: v as CreateProjectBodyCategory })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="engineering">工程開發</SelectItem>
-                    <SelectItem value="office">一般辦公</SelectItem>
-                    <SelectItem value="general">一般</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex flex-wrap gap-2">
+                  {categories.map((cat) => (
+                    <div
+                      key={cat.id}
+                      className={cn(
+                        "flex items-center gap-1 pl-3 pr-1 py-1 rounded-full border text-sm cursor-pointer transition-colors select-none",
+                        newProject.category === cat.id
+                          ? "border-primary bg-primary/10 text-primary font-medium"
+                          : "border-border bg-card text-foreground hover:border-muted-foreground/50"
+                      )}
+                      onClick={() => setNewProject({ ...newProject, category: cat.id })}
+                    >
+                      <span>{cat.name}</span>
+                      {categories.length > 1 && (
+                        <button
+                          className="ml-0.5 rounded-full p-0.5 opacity-40 hover:opacity-100 hover:bg-destructive/15 hover:text-destructive transition-colors"
+                          onClick={(e) => handleDeleteCategory(cat, e)}
+                          title="刪除分類"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {addingCategory ? (
+                  <div className="mt-2 p-3 rounded-lg border border-border bg-card/50 space-y-2">
+                    <Input
+                      placeholder="分類名稱"
+                      value={newCatName}
+                      onChange={(e) => setNewCatName(e.target.value)}
+                      className="h-8 text-sm"
+                      autoFocus
+                      onKeyDown={(e) => e.key === "Enter" && handleAddCategory()}
+                    />
+                    <div className="flex gap-2">
+                      <Button size="sm" className="h-7 text-xs" onClick={handleAddCategory} disabled={catSaving}>
+                        <Check className="h-3 w-3 mr-1" />
+                        {catSaving ? "新增中..." : "確認新增"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs"
+                        onClick={() => { setAddingCategory(false); setNewCatName(""); }}
+                      >
+                        取消
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
+                    onClick={() => setAddingCategory(true)}
+                  >
+                    <Plus className="h-3 w-3" /> 新增分類
+                  </button>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>描述 (選填)</Label>
@@ -534,6 +654,15 @@ export default function Projects() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    title="匯出 Markdown"
+                    onClick={(e) => handleExport(project, e)}
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                     title="刪除專案"
                     onClick={(e) => handleDelete(project.id, e)}
@@ -562,6 +691,7 @@ export default function Projects() {
           project={selectedProject}
           open={!!selectedProject}
           onClose={() => setSelectedProject(null)}
+          categories={categories}
         />
       )}
     </div>
