@@ -1,4 +1,4 @@
-# AI 智囊日誌 (AI-Zhi-Nang-Ri-Zhi)
+# AI 智囊日誌
 
 一個 Windows 桌面版的 AI 工作日誌應用，支援多種 AI 模型（Google Gemini、OpenAI ChatGPT、本地 Ollama）做日誌分析與目標拆解。
 
