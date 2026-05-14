@@ -8,7 +8,9 @@
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./filter ./scripts\" --if-present run typecheck",
     "tauri:dev": "pnpm --filter @workspace/ai-journal tauri:dev",
     "tauri:build": "pnpm --filter @workspace/ai-journal tauri:build",
-    "api:rebuild": "pyinstaller python-api.spec --noconfirm"
+    "frontend:build": "pnpm --filter @workspace/ai-journal build",
+    "api:build": "pnpm frontend:build && python -m PyInstaller python-api.spec --noconfirm && node -e \"require('fs').copyFileSync('dist/python-api.exe','artifacts/ai-journal/src-tauri/sidecars/python-api-x86_64-pc-windows-msvc.exe')\"",
+    "setup": "pnpm install && pip install -r python_api/requirements.txt && pnpm api:build"
   },
   "private": true,
   "devDependencies": {

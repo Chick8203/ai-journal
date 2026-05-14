@@ -50,17 +50,25 @@
 
 ```powershell
 # 1. clone
-git clone <your-repo-url>
-cd AI-Zhi-Nang-Ri-Zhi
+git clone https://github.com/Chick8203/ai-journal.git
+cd ai-journal
 
-# 2. 前端套件（會幫所有 workspace 安裝）
-pnpm install
+# 2. 一鍵安裝（前端 + Python + build sidecar binary）
+pnpm setup
 
-# 3. Python 套件
-pip install -r python_api\requirements.txt
-
-# 4. 第一次跑 tauri:dev 時 Windows 會彈防火牆，按「允許」
+# 3. 啟動
+pnpm tauri:dev
 ```
+
+> `pnpm setup` 等同於依序跑：
+> 1. `pnpm install`（前端套件）
+> 2. `pip install -r python_api/requirements.txt`（Python 套件）
+> 3. `pnpm api:build`（PyInstaller 編譯 Python sidecar + 複製到 Tauri sidecars 資料夾）
+>
+> ⚠️ Python sidecar `.exe` 不入 git（每人本地 build），第一次一定要跑 `api:build`，
+> 不然 `tauri:dev` 會報 `resource path 'sidecars\python-api-...' doesn't exist`。
+
+第一次跑 `tauri:dev` 時 Windows 會彈防火牆，按「允許」。
 
 ---
 
@@ -89,18 +97,15 @@ pnpm tauri:dev
 # 1. 殺掉舊 process（不殺會 PermissionDenied）
 Get-Process python-api -ErrorAction SilentlyContinue | Stop-Process -Force
 
-# 2. 重建 binary
-python -m PyInstaller python-api.spec --noconfirm
+# 2. Build + 自動複製到 sidecars
+pnpm api:build
 
-# 3. 複製到 Tauri sidecars 目錄
-copy dist\python-api.exe artifacts\ai-journal\src-tauri\sidecars\python-api-x86_64-pc-windows-msvc.exe
-
-# 4. 重啟 tauri:dev
+# 3. 重啟 tauri:dev
 ```
 
 **一行串起來**：
 ```powershell
-Get-Process python-api -ErrorAction SilentlyContinue | Stop-Process -Force; python -m PyInstaller python-api.spec --noconfirm; copy dist\python-api.exe artifacts\ai-journal\src-tauri\sidecars\python-api-x86_64-pc-windows-msvc.exe
+Get-Process python-api -ErrorAction SilentlyContinue | Stop-Process -Force; pnpm api:build
 ```
 
 ### 後端單獨測試（不透過 Tauri）
