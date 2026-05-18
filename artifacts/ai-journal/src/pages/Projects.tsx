@@ -29,6 +29,7 @@ import {
   ChevronRight, X, Download, Plus, Check,
 } from "lucide-react";
 import { format } from "date-fns";
+import { getMoodState, formatMood } from "@/lib/mood";
 
 interface ProjectCategory {
   id: string;
@@ -78,24 +79,30 @@ function EntryDetailDialog({
   return (
     <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="p-6 border-b border-border shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <CalendarIcon className="w-3 h-3" />
-                {format(new Date(entry.date), "yyyy-MM-dd")}
-              </span>
-              {entry.mood && (
-                <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-md font-medium">
-                  心情 {entry.mood}/5
+        <DialogHeader className="p-6 border-b border-border shrink-0 space-y-2">
+          {entry.title?.trim() && (
+            <DialogTitle className="font-serif text-xl text-left">{entry.title}</DialogTitle>
+          )}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <CalendarIcon className="w-3 h-3" />
+              {format(new Date(entry.date), "yyyy-MM-dd")}
+            </span>
+            {(() => {
+              const m = getMoodState(entry.mood);
+              return m ? (
+                <span className={cn("text-xs px-2 py-0.5 rounded-md font-medium whitespace-nowrap", m.bg, m.color)}>
+                  {m.emoji} {m.label}
                 </span>
-              )}
-              <span className="text-xs px-2 py-0.5 bg-secondary rounded-md text-muted-foreground">
-                {entry.template === "engineering" ? "工程開發" : entry.template === "office" ? "一般辦公" : "自由格式"}
-              </span>
-            </div>
+              ) : null;
+            })()}
+            <span className="text-xs px-2 py-0.5 bg-secondary rounded-md text-muted-foreground">
+              {entry.template === "engineering" ? "工程開發" : entry.template === "office" ? "一般辦公" : "自由格式"}
+            </span>
           </div>
-          <DialogTitle className="sr-only">日誌詳情</DialogTitle>
+          {!entry.title?.trim() && (
+            <DialogTitle className="sr-only">日誌詳情</DialogTitle>
+          )}
           <DialogDescription className="sr-only">完整日誌內容</DialogDescription>
         </DialogHeader>
         <ScrollArea className="flex-1 p-6">
@@ -152,10 +159,13 @@ function buildMarkdown(
   lines.push("");
 
   for (const entry of entries) {
-    lines.push(`## ${format(new Date(entry.date), "yyyy-MM-dd")}`);
+    const dateStr = format(new Date(entry.date), "yyyy-MM-dd");
+    const heading = entry.title?.trim() ? `${dateStr} — ${entry.title}` : dateStr;
+    lines.push(`## ${heading}`);
     lines.push("");
     const meta: string[] = [];
-    if (entry.mood) meta.push(`心情：${entry.mood}/5`);
+    const moodLabel = formatMood(entry.mood);
+    if (moodLabel) meta.push(`狀態：${moodLabel}`);
     if (entry.tags?.length) meta.push(`標籤：${entry.tags.map((t) => t.name).join("、")}`);
     if (meta.length) lines.push(`*${meta.join("　·　")}*`);
     lines.push("");
@@ -216,22 +226,28 @@ function ProjectEntriesSheet({
                     className="border rounded-lg p-4 bg-card hover:border-primary/40 hover:bg-accent/30 transition-colors cursor-pointer group"
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <CalendarIcon className="w-3 h-3" />
                           {format(new Date(entry.date), "yyyy-MM-dd")}
                         </span>
-                        {entry.mood && (
-                          <span className="text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded">
-                            心情 {entry.mood}/5
-                          </span>
-                        )}
+                        {(() => {
+                          const m = getMoodState(entry.mood);
+                          return m ? (
+                            <span className={cn("text-xs px-1.5 py-0.5 rounded whitespace-nowrap", m.bg, m.color)}>
+                              {m.emoji} {m.label}
+                            </span>
+                          ) : null;
+                        })()}
                       </div>
                       <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                         點擊閱讀全文 <ChevronRight className="w-3 h-3" />
                       </span>
                     </div>
-                    <p className="text-sm text-foreground line-clamp-3 whitespace-pre-wrap leading-relaxed">
+                    {entry.title?.trim() && (
+                      <p className="text-sm font-medium text-foreground mb-1 line-clamp-1">{entry.title}</p>
+                    )}
+                    <p className="text-sm text-muted-foreground line-clamp-3 whitespace-pre-wrap leading-relaxed">
                       {entry.content}
                     </p>
                     {entry.tags && entry.tags.length > 0 && (

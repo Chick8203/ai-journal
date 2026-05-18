@@ -58,6 +58,14 @@ def _migrate_entries_embeddings(conn):
             pass
 
 
+def _migrate_entries_title(conn):
+    """Add title column. Old entries left NULL — UI falls back to first line."""
+    try:
+        conn.execute("ALTER TABLE entries ADD COLUMN title TEXT DEFAULT NULL")
+    except Exception:
+        pass
+
+
 def _migrate_tags_from_json(conn):
     entries = conn.execute(
         "SELECT id, tags FROM entries WHERE tags IS NOT NULL AND tags != '[]' "
@@ -173,4 +181,5 @@ def init_db():
             )
         _migrate_project_status(conn)
         _migrate_entries_embeddings(conn)
+        _migrate_entries_title(conn)
         _migrate_tags_from_json(conn)

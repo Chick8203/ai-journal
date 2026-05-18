@@ -26,8 +26,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFo
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { TagSelector } from "@/components/TagSelector";
+import { MOOD_STATES, getMoodState } from "@/lib/mood";
 
 function hexToRgba(hex: string, alpha: number): string {
   const clean = hex.replace("#", "");
@@ -72,6 +72,7 @@ export default function Journal() {
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [projectId, setProjectId] = useState<string>("");
   const [template, setTemplate] = useState<string>("freeform");
+  const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [mood, setMood] = useState<string>("");
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
@@ -86,6 +87,7 @@ export default function Journal() {
     setDate(format(new Date(), "yyyy-MM-dd"));
     setProjectId(projects?.[0]?.id.toString() || "");
     setTemplate(templates[0]?.id ?? "freeform");
+    setTitle("");
     setContent(templates[0]?.content ?? "");
     setMood("");
     setSelectedTags([]);
@@ -97,6 +99,7 @@ export default function Journal() {
     setDate(format(new Date(entry.date), "yyyy-MM-dd"));
     setProjectId(entry.projectId.toString());
     setTemplate(entry.template as string);
+    setTitle(entry.title ?? "");
     setContent(entry.content);
     setMood(entry.mood?.toString() || "");
     setSelectedTags(entry.tags ?? []);
@@ -125,17 +128,20 @@ export default function Journal() {
     const tagNames = selectedTags.map((t) => t.name);
     const moodNum = mood ? parseInt(mood) : null;
 
+    const trimmedTitle = title.trim();
+
     try {
       if (editingId) {
         await updateEntry.mutateAsync({
           entryId: editingId,
-          data: { content, mood: moodNum, tags: tagNames },
+          data: { title: trimmedTitle || null, content, mood: moodNum, tags: tagNames },
         });
         toast({ title: "日誌已更新" });
       } else {
         await createEntry.mutateAsync({
           data: {
             date,
+            title: trimmedTitle || null,
             projectId: parseInt(projectId),
             template: template as unknown as CreateEntryBodyTemplate,
             content,
@@ -265,15 +271,20 @@ export default function Journal() {
                         </span>
                       </div>
                       <CardTitle className="text-base line-clamp-1 mt-2">
-                        {entry.content.split("\n")[0].replace(/^[#*-]\s+|【.*?】\s*/, "") || "無標題"}
+                        {entry.title?.trim() ||
+                          entry.content.split("\n")[0].replace(/^[#*-]\s+|【.*?】\s*/, "") ||
+                          "無標題"}
                       </CardTitle>
                     </div>
                     <div className="flex items-center gap-2">
-                      {entry.mood && (
-                        <div className="text-xs font-medium px-2 py-1 bg-primary/10 text-primary rounded-md">
-                          心情: {entry.mood}/5
-                        </div>
-                      )}
+                      {(() => {
+                        const m = getMoodState(entry.mood);
+                        return m ? (
+                          <div className={cn("text-xs font-medium px-2 py-1 rounded-md whitespace-nowrap", m.bg, m.color)}>
+                            {m.emoji} {m.label}
+                          </div>
+                        ) : null;
+                      })()}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -421,6 +432,17 @@ export default function Journal() {
               )}
 
               <div className="space-y-2">
+                <Label>標題</Label>
+                <Input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="一句話總結這篇日誌（選填）"
+                  maxLength={80}
+                  className="bg-card"
+                />
+              </div>
+
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>內容</Label>
                   <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => setContent("")}>
@@ -436,24 +458,28 @@ export default function Journal() {
               </div>
 
               <div className="space-y-2">
-                <Label>心情評分 (可選)</Label>
-                <ToggleGroup
-                  type="single"
-                  value={mood}
-                  onValueChange={(v) => setMood(v)}
-                  className="justify-start"
-                >
-                  {["1", "2", "3", "4", "5"].map((v) => (
-                    <ToggleGroupItem
-                      key={v}
-                      value={v}
-                      aria-label={v}
-                      className="w-10 h-10 rounded-full data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-                    >
-                      {v}
-                    </ToggleGroupItem>
-                  ))}
-                </ToggleGroup>
+                <Label>當下狀態（選填）</Label>
+                <div className="flex flex-wrap gap-2">
+                  {MOOD_STATES.map((m) => {
+                    const active = mood === m.value.toString();
+                    return (
+                      <button
+                        key={m.value}
+                        type="button"
+                        onClick={() => setMood(active ? "" : m.value.toString())}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm transition-colors select-none",
+                          active
+                            ? cn("border-primary font-medium", m.bg, m.color)
+                            : "border-border bg-card text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground"
+                        )}
+                      >
+                        <span>{m.emoji}</span>
+                        <span>{m.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="space-y-2">

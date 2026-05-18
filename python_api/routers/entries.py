@@ -30,6 +30,7 @@ _ENTRY_GROUP = "GROUP BY e.id"
 
 class EntryCreate(BaseModel):
     date: str
+    title: Optional[str] = None
     content: str
     projectId: int
     template: str = "freeform"
@@ -38,6 +39,7 @@ class EntryCreate(BaseModel):
 
 
 class EntryUpdate(BaseModel):
+    title: Optional[str] = None
     content: Optional[str] = None
     mood: Optional[int] = None
     tags: Optional[list[str]] = None
@@ -69,6 +71,7 @@ def row_to_entry(row) -> dict:
     return {
         "id": row["id"],
         "date": row["date"],
+        "title": row["title"] if "title" in keys else None,
         "content": row["content"],
         "projectId": row["project_id"],
         "projectName": row["project_name"] if "project_name" in keys else "",
@@ -154,9 +157,10 @@ def create_entry(body: EntryCreate):
             raise HTTPException(status_code=404, detail="Project not found")
 
         cur = conn.execute(
-            "INSERT INTO entries (date, content, project_id, template, mood, tags) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO entries (date, title, content, project_id, template, mood, tags) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 body.date,
+                (body.title or "").strip() or None,
                 body.content,
                 body.projectId,
                 body.template,
@@ -264,6 +268,9 @@ def update_entry(entry_id: int, body: EntryUpdate):
 
         updates = []
         params = []
+        if body.title is not None:
+            updates.append("title = ?")
+            params.append(body.title.strip() or None)
         if body.content is not None:
             updates.append("content = ?")
             params.append(body.content)

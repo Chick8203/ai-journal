@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Book, LayoutDashboard, FolderKanban, BrainCircuit, Settings, Sparkles } from "lucide-react";
+import { Book, LayoutDashboard, FolderKanban, Settings, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -9,8 +9,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { href: "/", label: "總覽", icon: LayoutDashboard },
     { href: "/journal", label: "撰寫日誌", icon: Book },
     { href: "/projects", label: "專案", icon: FolderKanban },
-    { href: "/ai", label: "AI 分析", icon: BrainCircuit },
-    { href: "/retrospect", label: "跨時空對話", icon: Sparkles },
+    { href: "/chat", label: "AI 對話", icon: MessageCircle },
   ];
 
   const bottomItems = [

@@ -93,11 +93,12 @@ export const EntryTemplate = {
 export interface Entry {
   id: number;
   date: string;
+  title?: string | null;
   content: string;
   projectId: number;
   projectName: string;
   template: EntryTemplate;
-  /** 1-5 scale */
+  /** 1-5 scale (1=😩 遇到瓶頸 ... 5=💪 順利突破) */
   mood?: number | null;
   tags: Tag[];
   createdAt: string;
@@ -114,6 +115,7 @@ export const CreateEntryBodyTemplate = {
 
 export interface CreateEntryBody {
   date: string;
+  title?: string | null;
   content: string;
   projectId: number;
   template: CreateEntryBodyTemplate;
@@ -123,6 +125,7 @@ export interface CreateEntryBody {
 }
 
 export interface UpdateEntryBody {
+  title?: string | null;
   content?: string;
   mood?: number | null;
   /** Tag names. New tags are auto-created. */

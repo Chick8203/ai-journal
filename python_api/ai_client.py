@@ -69,9 +69,19 @@ def _embed_gemini(text: str, api_key: str) -> list[float]:
         f"models/text-embedding-004:embedContent?key={api_key}"
     )
     payload = {"content": {"parts": [{"text": text}]}}
-    resp = requests.post(url, json=payload, timeout=60)
-    resp.raise_for_status()
-    return resp.json()["embedding"]["values"]
+    try:
+        resp = requests.post(url, json=payload, timeout=60)
+        resp.raise_for_status()
+        return resp.json()["embedding"]["values"]
+    except requests.exceptions.ConnectionError:
+        raise RuntimeError(
+            "無法連線到 Google API（generativelanguage.googleapis.com）。"
+            "請檢查網路連線、防火牆或 VPN 設定。"
+        )
+    except Exception as e:
+        # Mask API key from any error message before bubbling up
+        msg = str(e).replace(api_key, "***KEY***") if api_key else str(e)
+        raise RuntimeError(f"Gemini embedding 失敗：{msg[:300]}")
 
 
 def _embed_openai(text: str, api_key: str) -> list[float]:
@@ -171,11 +181,16 @@ def _call_gemini(prompt: str, api_key: str) -> str:
             resp.raise_for_status()
             data = resp.json()
             return data["candidates"][0]["content"]["parts"][0]["text"]
+        except requests.exceptions.ConnectionError:
+            last_error = "無法連線到 Google API（檢查網路 / 防火牆 / VPN）"
+            break  # network is down, no point trying more models
         except requests.HTTPError as e:
-            last_error = f"{model}: {e}"
+            msg = str(e).replace(api_key, "***KEY***") if api_key else str(e)
+            last_error = f"{model}: {msg}"
             continue
         except Exception as e:
-            last_error = str(e)
+            msg = str(e).replace(api_key, "***KEY***") if api_key else str(e)
+            last_error = msg
             continue
 
     raise RuntimeError(f"Gemini API 呼叫失敗：{last_error}")
