@@ -72,6 +72,34 @@ pnpm tauri:dev
 
 ---
 
+## 🔄 拉取最新版（同事 / 多台電腦同步）
+
+平常別人 push 新版上來後，你要同步下來、跑起來：
+
+```powershell
+# 1. 拉最新程式碼
+git pull
+
+# 2. 看這次 commit 改了什麼
+git log --oneline -5
+```
+
+接下來依改動範圍跑不同指令：
+
+| 別人改了什麼 | 你要做什麼 |
+|--------------|-----------|
+| **只有前端**（`.tsx` / `.css` / `package.json` 沒動） | 不用做事，`tauri:dev` 跑下去 Vite HMR 自動套用 |
+| **`package.json` 有變**（新增套件） | `pnpm install` |
+| **Python 後端有變**（`python_api/` 內的 `.py`） | `pnpm api:build`（重建 sidecar） |
+| **`requirements.txt` 有變** | `pip install -r python_api\requirements.txt` 後再 `pnpm api:build` |
+| **不確定 / 全部都動了** | `pnpm setup`（最保險，重跑完整流程） |
+
+> 💡 **最保險的做法**：每次 pull 完都跑 `pnpm setup`，雖然慢 1-2 分鐘但絕對不會踩雷。
+
+⚠️ **資料庫 schema 變更不用擔心** — 後端啟動時會自動 migrate，舊資料不會壞掉。
+
+---
+
 ## 💻 日常開發
 
 ### 啟動開發環境
