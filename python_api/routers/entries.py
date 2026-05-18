@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
 from ..database import get_db
+from ..ai_client import generate_embedding
 
 router = APIRouter(prefix="/entries", tags=["entries"])
 
@@ -76,6 +77,19 @@ def row_to_entry(row) -> dict:
         "tags": tags,
         "createdAt": row["created_at"],
     }
+
+
+def _try_embed_entry(conn, entry_id: int, content: str) -> None:
+    """Best-effort: generate and store embedding for an entry. Silent on failure."""
+    try:
+        vec, provider, model = generate_embedding(content)
+        conn.execute(
+            "UPDATE entries SET embedding = ?, embedding_provider = ?, embedding_model = ? WHERE id = ?",
+            (json.dumps(vec), provider, model, entry_id),
+        )
+    except Exception:
+        # Embedding service down or no key — entry still saves, can backfill later.
+        pass
 
 
 def _sync_tags(conn, entry_id: int, tag_names: list[str]):
@@ -152,6 +166,7 @@ def create_entry(body: EntryCreate):
         )
         entry_id = cur.lastrowid
         _sync_tags(conn, entry_id, body.tags)
+        _try_embed_entry(conn, entry_id, body.content)
 
         row = conn.execute(
             f"{_ENTRY_SELECT} WHERE e.id = ? {_ENTRY_GROUP}",
@@ -264,6 +279,10 @@ def update_entry(entry_id: int, body: EntryUpdate):
 
         if body.tags is not None:
             _sync_tags(conn, entry_id, body.tags)
+
+        # Re-embed if content changed
+        if body.content is not None:
+            _try_embed_entry(conn, entry_id, body.content)
 
         row = conn.execute(
             f"{_ENTRY_SELECT} WHERE e.id = ? {_ENTRY_GROUP}",

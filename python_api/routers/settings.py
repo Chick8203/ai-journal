@@ -14,6 +14,7 @@ class AISettings(BaseModel):
     openai_api_key: Optional[str] = None
     local_base_url: Optional[str] = None
     local_model: Optional[str] = None
+    local_embedding_model: Optional[str] = None
 
 
 def _mask_key(key: str | None) -> str | None:
@@ -28,7 +29,7 @@ def get_ai_settings():
         rows = conn.execute(
             "SELECT key, value FROM settings WHERE key IN ("
             "'ai_provider', 'gemini_api_key', 'openai_api_key', "
-            "'local_base_url', 'local_model'"
+            "'local_base_url', 'local_model', 'local_embedding_model'"
             ")"
         ).fetchall()
         data = {r["key"]: r["value"] for r in rows}
@@ -40,6 +41,7 @@ def get_ai_settings():
             "openai_api_key_preview": _mask_key(data.get("openai_api_key")),
             "local_base_url": data.get("local_base_url", "") or "",
             "local_model": data.get("local_model", "") or "",
+            "local_embedding_model": data.get("local_embedding_model", "") or "",
         }
 
 
@@ -69,6 +71,8 @@ def update_ai_settings(body: AISettings):
             _upsert(conn, "local_base_url", body.local_base_url.strip())
         if body.local_model is not None:
             _upsert(conn, "local_model", body.local_model.strip())
+        if body.local_embedding_model is not None:
+            _upsert(conn, "local_embedding_model", body.local_embedding_model.strip())
     return get_ai_settings()
 
 

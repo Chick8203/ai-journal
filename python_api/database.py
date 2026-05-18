@@ -45,6 +45,19 @@ def _migrate_project_status(conn):
         pass
 
 
+def _migrate_entries_embeddings(conn):
+    """Add embedding columns for RAG semantic search."""
+    for stmt in (
+        "ALTER TABLE entries ADD COLUMN embedding TEXT DEFAULT NULL",
+        "ALTER TABLE entries ADD COLUMN embedding_provider TEXT DEFAULT NULL",
+        "ALTER TABLE entries ADD COLUMN embedding_model TEXT DEFAULT NULL",
+    ):
+        try:
+            conn.execute(stmt)
+        except Exception:
+            pass
+
+
 def _migrate_tags_from_json(conn):
     entries = conn.execute(
         "SELECT id, tags FROM entries WHERE tags IS NOT NULL AND tags != '[]' "
@@ -159,4 +172,5 @@ def init_db():
                 ),
             )
         _migrate_project_status(conn)
+        _migrate_entries_embeddings(conn)
         _migrate_tags_from_json(conn)

@@ -17,6 +17,7 @@ interface AISettingsData {
   openai_api_key_preview: string | null;
   local_base_url: string;
   local_model: string;
+  local_embedding_model: string;
 }
 
 export default function Settings() {
@@ -29,6 +30,7 @@ export default function Settings() {
   const [openaiKey, setOpenaiKey] = useState("");
   const [localBaseUrl, setLocalBaseUrl] = useState("");
   const [localModel, setLocalModel] = useState("");
+  const [localEmbeddingModel, setLocalEmbeddingModel] = useState("");
   const [serverData, setServerData] = useState<AISettingsData | null>(null);
 
   useEffect(() => {
@@ -38,6 +40,7 @@ export default function Settings() {
         setProvider(data.ai_provider);
         setLocalBaseUrl(data.local_base_url || "");
         setLocalModel(data.local_model || "");
+        setLocalEmbeddingModel(data.local_embedding_model || "");
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -53,6 +56,7 @@ export default function Settings() {
       else if (openaiKey === "") body.openai_api_key = null;
       body.local_base_url = localBaseUrl.trim();
       body.local_model = localModel.trim();
+      body.local_embedding_model = localEmbeddingModel.trim();
 
       const updated = await apiFetch<AISettingsData>("/api/settings/ai", {
         method: "PUT",
@@ -275,7 +279,7 @@ export default function Settings() {
             </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="local-model">模型名稱</Label>
+            <Label htmlFor="local-model">對話模型</Label>
             <Input
               id="local-model"
               placeholder="llama3.2"
@@ -287,6 +291,19 @@ export default function Settings() {
               <code className="font-mono">qwen2.5:7b</code>、
               <code className="font-mono">gemma2:9b</code>。
               Ollama 可用 <code className="font-mono">ollama list</code> 查看已安裝模型。
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="local-embed-model">Embedding 模型（用於跨時空對話）</Label>
+            <Input
+              id="local-embed-model"
+              placeholder="nomic-embed-text"
+              value={localEmbeddingModel}
+              onChange={(e) => setLocalEmbeddingModel(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              專門做向量化的模型，跟對話模型不同。建議 <code className="font-mono">nomic-embed-text</code>，
+              先執行 <code className="font-mono">ollama pull nomic-embed-text</code>。
             </p>
           </div>
         </CardContent>
