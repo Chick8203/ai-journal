@@ -8,7 +8,7 @@
 
 ```
 ┌──────────────────────────────────────────────────┐
-│  Tauri v2 (Rust)  ── 桌面殼，管理視窗 & sidecar  │
+│  Tauri v2 (Rust)  ── 桌面殼，管理視窗 & sidecar   │
 │  ┌────────────────────────────────────────────┐  │
 │  │ React + Vite + TypeScript (前端 WebView)   │  │
 │  │   - shadcn/ui + Tailwind                   │  │
@@ -19,7 +19,7 @@
 │  │ Python FastAPI sidecar (PyInstaller bundle)│  │
 │  │   - SQLite (journal.db)                    │  │
 │  │   - AI integration (Gemini/OpenAI/Local)   │  │
-│  │   - tkinter 原生檔案對話框 (Markdown 匯出) │  │
+│  │   - tkinter 原生檔案對話框 (Markdown 匯出)   │  │
 │  └────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────┘
 ```
