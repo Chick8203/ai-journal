@@ -410,10 +410,150 @@ class ProjectRef(BaseModel):
 
 class JournalChatBody(BaseModel):
     messages: list[ChatMessage]
-    mode: str = "journal"
+    mode: str = "auto"  # auto = AI judges intent; or explicit journal/bottleneck/decompose
     projects: list[ProjectRef] = []
     projectId: Optional[int] = None
     days: int = 0  # 0 = use all entries (no date filter); >0 = limit to last N days
+
+
+def _parse_time_range_zh(text: str) -> Optional[tuple[date, date, str]]:
+    """Parse common Chinese / English time expressions in user message.
+
+    Returns (start_date, end_date, label) or None.
+    Order matters: more specific patterns must be checked before generic ones.
+    """
+    if not text:
+        return None
+    today = date.today()
+    text_lower = text.lower()
+
+    # ── 全部 / all entries ────────────────────────────────────────────────────
+    if any(kw in text for kw in ["全部", "所有", "整體", "歷史所有", "全時間"]) or \
+       any(kw in text_lower for kw in ["all entries", "all time", "entire history"]):
+        return (date(2000, 1, 1), today, "全部歷史")
+
+    # ── 今天 / 昨天 ───────────────────────────────────────────────────────────
+    if "今天" in text or "today" in text_lower:
+        return (today, today, "今天")
+    if "昨天" in text or "yesterday" in text_lower:
+        d = today - timedelta(days=1)
+        return (d, d, "昨天")
+
+    # ── 週相關（先 specific 後 generic）─────────────────────────────────────
+    if any(kw in text for kw in ["上個禮拜", "上禮拜", "上週", "上周", "上星期"]) or "last week" in text_lower:
+        this_monday = today - timedelta(days=today.weekday())
+        last_monday = this_monday - timedelta(days=7)
+        last_sunday = this_monday - timedelta(days=1)
+        return (last_monday, last_sunday, "上週")
+    if any(kw in text for kw in ["這個禮拜", "這禮拜", "本週", "這週", "本周", "這周", "本星期", "這星期"]) or "this week" in text_lower:
+        monday = today - timedelta(days=today.weekday())
+        return (monday, today, "這週")
+
+    # ── 月相關 ───────────────────────────────────────────────────────────────
+    if any(kw in text for kw in ["上個月", "上月"]) or "last month" in text_lower:
+        first_of_month = date(today.year, today.month, 1)
+        last_of_last_month = first_of_month - timedelta(days=1)
+        first_of_last_month = date(last_of_last_month.year, last_of_last_month.month, 1)
+        return (first_of_last_month, last_of_last_month, "上個月")
+    if any(kw in text for kw in ["這個月", "本月", "這月"]) or "this month" in text_lower:
+        return (date(today.year, today.month, 1), today, "這個月")
+
+    # ── 年相關（先 specific 後 generic）─────────────────────────────────────
+    if "去年" in text or "last year" in text_lower:
+        return (date(today.year - 1, 1, 1), date(today.year - 1, 12, 31), "去年")
+    if any(kw in text for kw in ["上半年"]):
+        return (date(today.year, 1, 1), date(today.year, 6, 30), f"{today.year} 年上半年")
+    if any(kw in text for kw in ["下半年"]):
+        return (date(today.year, 7, 1), date(today.year, 12, 31), f"{today.year} 年下半年")
+    if "半年" in text or "past 6 months" in text_lower:
+        # 最近半年 / 半年內 ≈ past 6 months
+        try:
+            six_months_ago = date(today.year, today.month - 6, today.day) if today.month > 6 \
+                else date(today.year - 1, today.month + 6, today.day)
+        except ValueError:
+            # 月末日子在前 6 個月不存在（例如 8/31 → 2/31）→ 用該月第一天
+            six_months_ago = date(today.year, today.month, 1) - timedelta(days=180)
+        return (six_months_ago, today, "最近半年")
+    if "今年" in text or "this year" in text_lower:
+        return (date(today.year, 1, 1), today, f"今年（{today.year}）")
+
+    # ── N 天 / 週 / 月 ───────────────────────────────────────────────────────
+    m = re.search(r"(?:最近|過去|近)\s*(\d+)\s*天", text)
+    if m:
+        n = int(m.group(1))
+        return (today - timedelta(days=n - 1), today, f"最近 {n} 天")
+    m = re.search(r"(?:最近|過去|近)\s*(\d+)\s*(?:週|周|禮拜)", text)
+    if m:
+        n = int(m.group(1))
+        return (today - timedelta(days=n * 7 - 1), today, f"最近 {n} 週")
+    m = re.search(r"(?:最近|過去|近)\s*(\d+)\s*(?:個月|月)", text)
+    if m:
+        n = int(m.group(1))
+        # 約略 N 個月 ≈ N * 30 天，避免月份相減的邊界 bug
+        return (today - timedelta(days=n * 30), today, f"最近 {n} 個月")
+    m = re.search(r"past\s+(\d+)\s+days?", text_lower)
+    if m:
+        n = int(m.group(1))
+        return (today - timedelta(days=n - 1), today, f"past {n} days")
+    m = re.search(r"past\s+(\d+)\s+months?", text_lower)
+    if m:
+        n = int(m.group(1))
+        return (today - timedelta(days=n * 30), today, f"past {n} months")
+
+    return None
+
+
+def _fetch_entries_by_date_range(
+    start: date, end: date, project_id: Optional[int]
+) -> str:
+    """Fetch all entries between start and end date inclusive, formatted as context."""
+    start_s, end_s = start.isoformat(), end.isoformat()
+    with get_db() as conn:
+        if project_id:
+            rows = conn.execute(
+                """
+                SELECT e.date, e.title, e.content, e.mood, p.name as project_name
+                FROM entries e
+                JOIN projects p ON p.id = e.project_id
+                WHERE e.project_id = ? AND e.date >= ? AND e.date <= ?
+                ORDER BY e.date ASC
+                LIMIT 200
+                """,
+                (project_id, start_s, end_s),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT e.date, e.title, e.content, e.mood, p.name as project_name
+                FROM entries e
+                JOIN projects p ON p.id = e.project_id
+                WHERE e.date >= ? AND e.date <= ?
+                ORDER BY e.date ASC
+                LIMIT 200
+                """,
+                (start_s, end_s),
+            ).fetchall()
+
+    if not rows:
+        return f"（{start_s} ~ {end_s} 期間沒有日誌資料）"
+
+    mood_label = {
+        1: "😩 遇到瓶頸",
+        2: "🤔 邏輯卡關",
+        3: "😐 推進中",
+        4: "💡 靈光一閃",
+        5: "💪 順利突破",
+    }
+    parts = []
+    for r in rows:
+        title = r["title"] or ""
+        title_str = f" | {title}" if title else ""
+        mood = mood_label.get(r["mood"], "—") if r["mood"] is not None else "—"
+        snippet = (r["content"] or "")[:300]
+        parts.append(
+            f"[{r['date']} | {r['project_name']}{title_str} | 狀態 {mood}]\n{snippet}"
+        )
+    return "\n\n".join(parts)
 
 
 def _fetch_relevant_entries_context(
@@ -672,6 +812,100 @@ def _prompt_bottleneck(entries_context: str) -> str:
 }}"""
 
 
+def _prompt_auto(
+    projects: list[ProjectRef],
+    entries_context: str,
+    range_label: str,
+    start_date: str,
+    end_date: str,
+) -> str:
+    """Unified prompt: AI infers intent and outputs the right action."""
+    projects_text = (
+        "\n".join(f"- ID {p.id}: {p.name}" for p in projects)
+        if projects
+        else "（目前沒有專案）"
+    )
+    return f"""你是「智囊」，一位多功能 AI 對話助理。可以做三件事：
+
+1. **寫日誌** — 把使用者的口語描述整理成結構化日誌草稿
+2. **分析瓶頸** — 根據使用者指定時間範圍內的「歷史日誌」找出該段時間出現的卡點與建議
+3. **拆解目標** — 把大目標切成可執行的 SOP 步驟
+
+請根據對話內容**自己判斷**使用者要什麼，輸出對應 JSON。
+
+## 判斷規則
+
+- 提到「今天我...」「做了什麼...」「整理一下今天」「記錄」等 → 用 **draft**（使用者描述自己的當下，AI 整理成日誌）
+- 提到「分析瓶頸」「我這禮拜卡在哪」「過去 X 天為什麼沒進展」「最近的瓶頸」等 → 用 **bottleneck**（**不是使用者描述瓶頸給你聽，而是你從下方的歷史日誌中找出那段時間的瓶頸並給建議**）
+- 提到「想完成 X」「目標」「怎麼開始」「拆解」「步驟」等 → 用 **decompose**
+- 資訊不足或還沒辦法判斷 → 用 **ask**（請追問 1-2 個關鍵問題）
+- 對話來回不超過 3-4 輪，盡早給出結果
+
+## 輸出格式（嚴格 JSON，不要 markdown 或其他文字）
+
+【追問】：
+{{
+  "action": "ask",
+  "message": "（繁體中文的追問，1-2 個問題）"
+}}
+
+【日誌草稿】：
+{{
+  "action": "draft",
+  "message": "（例如「我幫你整理好了！」）",
+  "draft": {{
+    "title": "（一句話標題，10-20 字）",
+    "content": "（完整日誌內容，繁體中文，100-400 字，保留口語感）",
+    "mood": <1-5 整數，1=😩 遇到瓶頸 / 2=🤔 邏輯卡關 / 3=😐 推進中 / 4=💡 靈光一閃 / 5=💪 順利突破>,
+    "tags": ["標籤1", "標籤2"],
+    "suggestedProjectId": <整數 ID 或 null>
+  }}
+}}
+
+【瓶頸分析】（重要：從下方歷史日誌中**主動找出**那段時間的瓶頸，不要等使用者描述）：
+{{
+  "action": "bottleneck",
+  "message": "（簡短說明，例如「分析了你 {range_label} 的日誌，看看這些卡點」）",
+  "result": {{
+    "efficiency": {{ "trend": "improving|declining|stable", "score": <0-100 整數> }},
+    "bottlenecks": ["（從歷史日誌中觀察到的具體瓶頸，例如：「5/15、5/17 都提到 FPGA 資源分配卡住」）", "..."],
+    "suggestions": ["（針對上述瓶頸的具體可執行建議）", "..."],
+    "summary": "（2-3 句整體分析，描述這段時間的工作狀態走勢）"
+  }}
+}}
+
+【目標拆解】：
+{{
+  "action": "decompose",
+  "message": "（簡短說明）",
+  "result": {{
+    "goal": "<簡短目標描述>",
+    "steps": [
+      {{
+        "stepNumber": 1,
+        "title": "<步驟標題>",
+        "description": "<詳細說明>",
+        "estimatedTime": "<例：30分鐘、2小時、3天>",
+        "deliverable": "<具體產出物>"
+      }}
+    ],
+    "totalEstimatedTime": "<總預估時間>"
+  }}
+}}
+
+## 可選的專案列表（寫日誌時 suggestedProjectId 用）
+
+{projects_text}
+
+## 歷史日誌 — 時間範圍：{range_label}（{start_date} ~ {end_date}）
+
+**重要：當使用者要求分析瓶頸時，請從以下日誌中觀察 mood 分布、重複出現的關鍵字、卡住的事件，主動找出瓶頸並給建議。**
+
+---
+{entries_context}
+---"""
+
+
 def _prompt_decompose() -> str:
     return """你是「智囊」，一位協助使用者拆解大目標的專案規劃師。
 
@@ -719,10 +953,11 @@ def journal_chat(body: JournalChatBody):
       - bottleneck: analyzes work struggles based on recent entries
       - decompose:  breaks a goal into SOP steps
     """
-    mode = body.mode if body.mode in ("journal", "bottleneck", "decompose") else "journal"
+    mode = body.mode if body.mode in ("auto", "journal", "bottleneck", "decompose") else "auto"
 
     if not body.messages:
         openings = {
+            "auto":       "嗨 👋 我是智囊。跟我聊聊吧 — 你可以記今天的日誌、聊最近的瓶頸、或者一起拆解一個目標，我會根據你說的內容自動調整。",
             "journal":    "今天過得怎麼樣？跟我說說發生了什麼吧 😊",
             "bottleneck": "最近有什麼讓你卡住或挫折的事嗎？跟我聊聊，我會用向量搜尋從你所有日誌中找出最相關的幾篇，結合起來幫你梳理 🔍",
             "decompose":  "你想拆解什麼目標？告訴我大方向，我會幫你切成可執行的步驟 🎯",
@@ -730,9 +965,25 @@ def journal_chat(body: JournalChatBody):
         return {"action": "ask", "message": openings[mode]}
 
     # Build mode-specific system prompt
-    if mode == "bottleneck":
-        # Use the latest user message as the search query.
-        # Combine the last 2 user messages to capture conversational evolution.
+    if mode == "auto":
+        # Detect time range from latest user message (e.g. "這個禮拜", "最近 3 天").
+        # If found, fetch entries in that range. Otherwise default to last 7 days.
+        user_msgs = [m.content for m in body.messages if m.role == "user"]
+        latest_user = user_msgs[-1] if user_msgs else ""
+
+        time_range = _parse_time_range_zh(latest_user)
+        if time_range:
+            start, end, range_label = time_range
+        else:
+            end = date.today()
+            start = end - timedelta(days=6)  # last 7 days inclusive
+            range_label = "最近 7 天（預設）"
+
+        entries_context = _fetch_entries_by_date_range(start, end, body.projectId)
+        system_prompt = _prompt_auto(
+            body.projects, entries_context, range_label, start.isoformat(), end.isoformat()
+        )
+    elif mode == "bottleneck":
         user_msgs = [m.content for m in body.messages if m.role == "user"]
         search_query = "\n".join(user_msgs[-2:]) if user_msgs else ""
         entries_context = _fetch_relevant_entries_context(
@@ -762,11 +1013,16 @@ def journal_chat(body: JournalChatBody):
 
     action = result.get("action", "ask")
 
-    if mode == "journal" and action == "draft":
+    # In auto mode, accept any of the 3 actions; in explicit modes, require matching action
+    accept_draft = action == "draft" and mode in ("auto", "journal")
+    accept_bottleneck = action == "bottleneck" and mode in ("auto", "bottleneck")
+    accept_decompose = action == "decompose" and mode in ("auto", "decompose")
+
+    if accept_draft:
         draft = result.get("draft") or {}
         return {
             "action": "draft",
-            "message": result.get("message", "我幫你整理好了！"),
+            "message": result.get("message", "我幫你整理好了!"),
             "draft": {
                 "title": str(draft.get("title", "") or "").strip()[:80],
                 "content": str(draft.get("content", "")),
@@ -776,7 +1032,7 @@ def journal_chat(body: JournalChatBody):
             },
         }
 
-    if mode == "bottleneck" and action == "bottleneck":
+    if accept_bottleneck:
         r = result.get("result") or {}
         eff = r.get("efficiency") or {}
         try:
@@ -797,7 +1053,7 @@ def journal_chat(body: JournalChatBody):
             },
         }
 
-    if mode == "decompose" and action == "decompose":
+    if accept_decompose:
         r = result.get("result") or {}
         steps_raw = r.get("steps") or []
         steps = []

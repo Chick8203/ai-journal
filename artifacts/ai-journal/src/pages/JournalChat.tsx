@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +23,6 @@ import {
   User,
   Search,
   Target,
-  Pencil,
   TrendingUp,
   TrendingDown,
   Minus,
@@ -37,8 +36,6 @@ import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { MOOD_STATES } from "@/lib/mood";
-
-type ChatMode = "journal" | "bottleneck" | "decompose";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -86,66 +83,109 @@ interface Project {
   name: string;
 }
 
-const MODE_CONFIG: Record<ChatMode, { label: string; icon: typeof Pencil; opening: string }> = {
-  journal: {
-    label: "寫日誌",
-    icon: Pencil,
-    opening:
-      "嗨 👋 我是智囊。跟我聊聊你今天過得怎麼樣吧 — 做了什麼、心情如何、有沒有什麼讓你印象深刻的事？我會幫你整理成日誌。",
-  },
-  bottleneck: {
-    label: "分析瓶頸",
-    icon: Search,
-    opening:
-      "最近有什麼讓你卡住或挫折的事嗎？跟我聊聊現況，我會用向量搜尋從你所有日誌中找出最相關的幾篇，結合起來幫你梳理 🔍",
-  },
-  decompose: {
-    label: "拆解目標",
-    icon: Target,
-    opening:
-      "你想拆解什麼目標？告訴我大方向（例如「兩個月內完成論文初稿」），我會幫你切成可執行的步驟 🎯",
-  },
+const OPENING_MESSAGE =
+  "嗨 👋 我是你的 AI 助理。跟我聊聊吧 — 你可以記今天的日誌、請我分析某段時間的瓶頸（例如「分析這個禮拜的瓶頸」）、或一起拆解一個目標，我會根據你說的內容自動調整。";
+
+// LocalStorage persistence ----------------------------------------------------
+const STORAGE_KEY = "ai-journal-chat-state-v1";
+
+interface PersistedState {
+  messages: ChatMessage[];
+  draft: DraftEntry | null;
+  draftTitle: string;
+  draftContent: string;
+  draftMood: number;
+  draftTags: string;
+  draftProjectId: number | null;
+  draftSaved: boolean;
+  bottleneck: BottleneckResult | null;
+  decompose: DecomposeResult | null;
+}
+
+const DEFAULT_STATE: PersistedState = {
+  messages: [{ role: "assistant", content: OPENING_MESSAGE }],
+  draft: null,
+  draftTitle: "",
+  draftContent: "",
+  draftMood: 3,
+  draftTags: "",
+  draftProjectId: null,
+  draftSaved: false,
+  bottleneck: null,
+  decompose: null,
 };
+
+function loadPersistedState(): PersistedState {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return DEFAULT_STATE;
+    const parsed = JSON.parse(raw);
+    return { ...DEFAULT_STATE, ...parsed };
+  } catch {
+    return DEFAULT_STATE;
+  }
+}
+
+function savePersistedState(state: PersistedState): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // localStorage might be full or disabled; silent fail is fine
+  }
+}
 
 export default function JournalChat() {
   const { toast } = useToast();
-  const [mode, setMode] = useState<ChatMode>("journal");
+  // Load persisted state once on mount
+  const initial = useMemo(loadPersistedState, []);
+
   const [projects, setProjects] = useState<Project[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "assistant", content: MODE_CONFIG.journal.opening },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>(initial.messages);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Journal mode draft state
-  const [draft, setDraft] = useState<DraftEntry | null>(null);
-  const [draftProjectId, setDraftProjectId] = useState<number | null>(null);
-  const [draftTitle, setDraftTitle] = useState("");
-  const [draftContent, setDraftContent] = useState("");
-  const [draftMood, setDraftMood] = useState(3);
-  const [draftTags, setDraftTags] = useState("");
+  // Draft state
+  const [draft, setDraft] = useState<DraftEntry | null>(initial.draft);
+  const [draftProjectId, setDraftProjectId] = useState<number | null>(initial.draftProjectId);
+  const [draftTitle, setDraftTitle] = useState(initial.draftTitle);
+  const [draftContent, setDraftContent] = useState(initial.draftContent);
+  const [draftMood, setDraftMood] = useState(initial.draftMood);
+  const [draftTags, setDraftTags] = useState(initial.draftTags);
+  const [draftSaved, setDraftSaved] = useState(initial.draftSaved);
   const [saving, setSaving] = useState(false);
 
-  // Result state for bottleneck / decompose modes
-  const [bottleneck, setBottleneck] = useState<BottleneckResult | null>(null);
-  const [decompose, setDecompose] = useState<DecomposeResult | null>(null);
+  // Result state for bottleneck / decompose
+  const [bottleneck, setBottleneck] = useState<BottleneckResult | null>(initial.bottleneck);
+  const [decompose, setDecompose] = useState<DecomposeResult | null>(initial.decompose);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const switchMode = (next: ChatMode) => {
-    if (next === mode) return;
-    setMode(next);
-    setMessages([{ role: "assistant", content: MODE_CONFIG[next].opening }]);
-    setInput("");
-    setDraft(null);
-    setDraftTitle("");
-    setDraftContent("");
-    setDraftMood(3);
-    setDraftTags("");
-    setDraftProjectId(null);
-    setBottleneck(null);
-    setDecompose(null);
-  };
+  // Auto-persist on every relevant state change
+  useEffect(() => {
+    savePersistedState({
+      messages,
+      draft,
+      draftTitle,
+      draftContent,
+      draftMood,
+      draftTags,
+      draftProjectId,
+      draftSaved,
+      bottleneck,
+      decompose,
+    });
+  }, [
+    messages,
+    draft,
+    draftTitle,
+    draftContent,
+    draftMood,
+    draftTags,
+    draftProjectId,
+    draftSaved,
+    bottleneck,
+    decompose,
+  ]);
 
   useEffect(() => {
     apiFetch<Project[]>("/api/projects")
@@ -170,15 +210,16 @@ export default function JournalChat() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: newMessages,
-          mode,
+          mode: "auto",
           projects: projects.map((p) => ({ id: p.id, name: p.name })),
-          days: 0, // 0 = use all entries
+          days: 0,
         }),
       });
       setMessages((prev) => [...prev, { role: "assistant", content: data.message }]);
 
       if (data.action === "draft" && data.draft) {
         setDraft(data.draft);
+        setDraftSaved(false); // new draft is unsaved by default
         setDraftTitle(data.draft.title || "");
         setDraftContent(data.draft.content);
         setDraftMood(data.draft.mood);
@@ -228,7 +269,8 @@ export default function JournalChat() {
         }),
       });
       toast({ title: "✅ 日誌已儲存", description: "可以到「撰寫日誌」或專案頁查看" });
-      handleReset();
+      setDraftSaved(true);
+      // Keep the card visible (don't reset). User can close via the X button.
     } catch {
       toast({ title: "儲存失敗", variant: "destructive" });
     } finally {
@@ -237,9 +279,10 @@ export default function JournalChat() {
   };
 
   const handleReset = () => {
-    setMessages([{ role: "assistant", content: MODE_CONFIG[mode].opening }]);
+    setMessages([{ role: "assistant", content: OPENING_MESSAGE }]);
     setInput("");
     setDraft(null);
+    setDraftSaved(false);
     setDraftTitle("");
     setDraftContent("");
     setDraftMood(3);
@@ -247,12 +290,6 @@ export default function JournalChat() {
     setDraftProjectId(null);
     setBottleneck(null);
     setDecompose(null);
-  };
-
-  const subtitle: Record<ChatMode, string> = {
-    journal: "用聊天的方式跟 AI 描述今天，自動整理成日誌。",
-    bottleneck: "跟 AI 討論你最近的卡點，結合過去日誌幫你找出瓶頸與解方。",
-    decompose: "把一個大目標交給 AI，討論幾輪後得到具體可執行的 SOP 步驟。",
   };
 
   return (
@@ -263,37 +300,14 @@ export default function JournalChat() {
             <MessageCircle className="w-6 h-6 text-primary" />
             AI 對話
           </h2>
-          <p className="text-muted-foreground mt-1 text-sm">{subtitle[mode]}</p>
+          <p className="text-muted-foreground mt-1 text-sm">
+            跟 AI 聊聊，依照你的描述自動整理成日誌、分析瓶頸或拆解目標。
+          </p>
         </div>
         <Button variant="outline" size="sm" onClick={handleReset} className="shrink-0">
           <RefreshCcw className="w-3.5 h-3.5 mr-1.5" />
           重新開始
         </Button>
-      </div>
-
-      {/* Mode selector */}
-      <div className="flex flex-wrap gap-2">
-        {(Object.keys(MODE_CONFIG) as ChatMode[]).map((m) => {
-          const cfg = MODE_CONFIG[m];
-          const Icon = cfg.icon;
-          const active = mode === m;
-          return (
-            <button
-              key={m}
-              type="button"
-              onClick={() => switchMode(m)}
-              className={cn(
-                "flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border text-sm transition-colors select-none",
-                active
-                  ? "border-primary bg-primary/10 text-primary font-medium"
-                  : "border-border bg-card text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground"
-              )}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {cfg.label}
-            </button>
-          );
-        })}
       </div>
 
       <Card className="overflow-hidden">
@@ -371,12 +385,31 @@ export default function JournalChat() {
       </Card>
 
       {draft && (
-        <Card className="bg-primary/5 border-primary/30">
+        <Card className={cn(
+          "border-primary/30",
+          draftSaved ? "bg-emerald-500/5 border-emerald-500/30" : "bg-primary/5"
+        )}>
           <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" />
-              日誌草稿
-            </CardTitle>
+            <div className="flex items-start justify-between gap-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className={cn("w-4 h-4", draftSaved ? "text-emerald-600" : "text-primary")} />
+                日誌草稿
+                {draftSaved && (
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                    <Check className="w-3 h-3" /> 已儲存
+                  </span>
+                )}
+              </CardTitle>
+              <button
+                type="button"
+                onClick={() => { setDraft(null); setDraftSaved(false); }}
+                disabled={saving}
+                className="text-muted-foreground hover:text-foreground p-1 -mt-1 -mr-1 rounded transition-colors disabled:opacity-50"
+                title="關閉草稿（繼續對話）"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -461,18 +494,17 @@ export default function JournalChat() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setDraft(null)} disabled={saving}>
-                <X className="w-4 h-4 mr-1.5" />
-                關閉草稿
-              </Button>
-              <Button onClick={handleSaveDraft} disabled={saving || !draftProjectId}>
+            <div className="flex justify-end pt-2">
+              <Button
+                onClick={handleSaveDraft}
+                disabled={saving || !draftProjectId || draftSaved}
+              >
                 {saving ? (
                   <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
                 ) : (
                   <Check className="w-4 h-4 mr-1.5" />
                 )}
-                儲存為日誌
+                {draftSaved ? "已儲存" : "儲存為日誌"}
               </Button>
             </div>
           </CardContent>

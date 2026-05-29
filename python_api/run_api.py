@@ -1,6 +1,16 @@
 import os
 import sys
 
+# Use Windows / macOS / Linux system trust store for SSL.
+# Necessary on networks that do HTTPS interception (corporate / school routers
+# substitute Google's cert with their own root CA, which Python's certifi bundle
+# doesn't trust by default).
+try:
+    import truststore
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
+
 import uvicorn
 
 

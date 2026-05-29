@@ -9,6 +9,7 @@ a = Analysis(
     hiddenimports=[
         "tkinter", "tkinter.filedialog",
         "openai", "openai.resources",
+        "truststore",
     ],
     hookspath=[],
     hooksconfig={},
